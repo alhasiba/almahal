@@ -221,7 +221,7 @@ body.locked{overflow:hidden}
   <div id="impSlotInv"></div>
   <details class="box" id="impBox" style="margin-top:12px">
     <summary style="font-weight:700;cursor:pointer;min-height:40px;display:flex;align-items:center">📋 إضافة فاتورة من Claude</summary>
-    <div class="hint" style="margin:8px 0">صوّر الفاتورة وارسلها لـ Claude، ينسخ لك الأصناف، والصقها هنا.</div>
+    <div class="hint" style="margin:8px 0">الصق الأصناف هنا. كل سطر: الاسم | الكمية | سعر الوحدة. بدون سعر = جرد ينضاف للمخزون مباشرة بدون تسجيل شراء. وممكن تحط فوق سطر: نوع: ديكور</div>
     <textarea id="impTxt" dir="rtl" placeholder="مورد: أبو علي&#10;شاشة كامري 2020 | 3 | 450&#10;سماعة بايونير | 10 | 35" style="width:100%;min-height:140px;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px"></textarea>
     <label for="impSup">المورد</label><input id="impSup" autocomplete="off">
     <div class="seg" id="impPay" style="margin-top:10px"><button aria-pressed="true" data-v="cash">نقد</button><button aria-pressed="false" data-v="card">شبكة</button><button aria-pressed="false" data-v="credit">آجل</button></div>
@@ -334,6 +334,14 @@ body.locked{overflow:hidden}
     <button class="btn" id="addOrd">سجّل الطلبية</button>
     <div class="err" id="oErr"></div>
   </div>
+  <details class="box" id="obBox" style="margin-top:12px">
+    <summary style="font-weight:700;cursor:pointer;min-height:40px;display:flex;align-items:center">📋 لصق طلبيات من ورقة (دفعة وحدة)</summary>
+    <div class="hint" style="margin:8px 0">كل سطر: الصنف | العدد. ممكن تحط فوق: مورد: الاسم، جوال: الرقم، نوع: القطعة (تنضاف قبل كل صنف).</div>
+    <textarea id="obTxt" dir="rtl" placeholder="مورد: شماسي&#10;جوال: 0569711340&#10;لاندكروزر 2015-2020 | 6" style="width:100%;min-height:160px;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px"></textarea>
+    <div id="obPrev" class="hint" style="margin:8px 0"></div>
+    <button class="btn" id="obGo">سجّل الطلبيات</button>
+    <div class="err" id="obErr"></div>
+  </details>
   <button class="btn" id="oPdf" style="margin-top:12px">📄 كل الطلبيات PDF</button>
   <h2 id="oCTitle">طلبات الزبائن</h2>
   <div class="box"><ul class="list" id="oCList"></ul></div>
@@ -645,13 +653,15 @@ const segVal=id=>$(id).querySelector('[aria-pressed="true"]').dataset.v;
 // ---- invoice import (pasted from Claude) ----
 const numA=v=>+String(v||'').replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[٫,،]/g,m=>m==='٫'?'.':'').replace(/[^\d.]/g,'');
 function parseImp(){
-  const rows=[];let sup='';
+  const rows=[];let sup='',kind='';
   for(let L of $('impTxt').value.split(/\r?\n/)){
     L=L.replace(/^[\s`*\-•]+|[\s`*]+$/g,'');if(!L)continue;
     const m=L.match(/^(?:مورد|المورد)\s*[:：]\s*(.+)$/);if(m){sup=m[1].trim();continue}
-    const p=L.split(/\s*[|｜]\s*/);if(p.length<3)continue;
-    const name=p[0].trim(),qty=numA(p[1]),cost=numA(p[2]);
-    if(name&&qty>0&&cost>=0&&p[2].trim()!=='')rows.push({name,qty,cost});
+    const k=L.match(/^(?:نوع|القطعة|قطعة)\s*[:：]\s*(.*)$/);if(k){kind=k[1].trim();continue}
+    const p=L.split(/\s*[|｜]\s*/);if(p.length<2)continue;
+    const name=((kind?kind+' ':'')+p[0].trim()).trim(),qty=numA(p[1]);
+    const hasCost=p.length>=3&&p[2].trim()!=='';const cost=hasCost?numA(p[2]):null;
+    if(name&&qty>0&&(cost===null||cost>=0))rows.push({name,qty,cost});
   }
   return{rows,sup};
 }
@@ -659,8 +669,8 @@ function impPreview(){
   const{rows,sup}=parseImp();
   if(sup&&!$('impSup').value.trim())$('impSup').value=sup;
   if(!rows.length){$('impPrev').innerHTML=$('impTxt').value.trim()?'<div class="hint">ما قدرت أقرا أي صنف، تأكد إن كل سطر كذا: الاسم | الكمية | سعر الوحدة</div>':'';return}
-  const tot=rows.reduce((a,r)=>a+r.qty*r.cost,0);
-  $('impPrev').innerHTML=`<ul class="list">${rows.map(r=>{const ex=S.items.find(x=>norm(x.name)===norm(r.name));return `<li><div><div class="t">${esc(r.name)}${ex?'':' <span class="low" style="background:var(--bg);color:var(--mute)">جديد</span>'}</div><div class="s">${r.qty} × ${fmt(r.cost)}</div></div><div class="t">${fmt(r.qty*r.cost)}</div></li>`}).join('')}</ul><div class="t" style="display:flex;justify-content:space-between;padding:8px 2px;border-top:1px solid var(--line)"><span>الإجمالي (${rows.length} صنف)</span><span>${fmt(tot)}</span></div>`;
+  const tot=rows.reduce((a,r)=>a+(r.cost===null?0:r.qty*r.cost),0),noPrice=rows.filter(r=>r.cost===null).length;
+  $('impPrev').innerHTML=`<ul class="list">${rows.map(r=>{const ex=S.items.find(x=>norm(x.name)===norm(r.name));return `<li><div><div class="t">${esc(bd(r.name))}${ex?'':' <span class="low" style="background:var(--bg);color:var(--mute)">جديد</span>'}</div><div class="s">${r.cost===null?r.qty+' · جرد بدون سعر':r.qty+' × '+fmt(r.cost)}</div></div><div class="t">${r.cost===null?'':fmt(r.qty*r.cost)}</div></li>`}).join('')}</ul><div class="t" style="display:flex;justify-content:space-between;padding:8px 2px;border-top:1px solid var(--line)"><span>${rows.length} صنف · ${rows.reduce((a,r)=>a+r.qty,0)} قطعة</span><span>${tot?fmt(tot):''}</span></div>${noPrice?`<div class="hint" style="margin-top:6px">${noPrice} صنف بدون سعر: ينضاف للمخزون بدون ما ينسجل كشراء، وتكلفته صفر لين تعدّلها.</div>`:''}`;
 }
 $('impTxt').addEventListener('input',impPreview);
 // ---- customer invoice on credit ----
@@ -708,19 +718,21 @@ $('impGo').onclick=async()=>{
   const E=m=>$('impErr').textContent=m;const{rows}=parseImp();
   if(!rows.length)return E('الصق الأصناف أول');
   const sup=$('impSup').value.trim(),pay=segVal('impPay'),credit=pay==='credit';
-  if(credit&&!sup)return E('اكتب اسم المورد عشان ينسجل الدين');
-  const tot=rows.reduce((a,r)=>a+r.qty*r.cost,0);
-  if(!await ask({title:'تضيف الفاتورة؟',msg:`${rows.length} صنف · الإجمالي ${fmt(tot)}${sup?' · '+sup:''}`,ok:'أضف'}))return;
+  const priced=rows.filter(r=>r.cost!==null);
+  if(credit&&priced.length&&!sup)return E('اكتب اسم المورد عشان ينسجل الدين');
+  const tot=priced.reduce((a,r)=>a+r.qty*r.cost,0);
+  if(!await ask({title:priced.length?'تضيف الفاتورة؟':'تضيف للمخزون؟',msg:priced.length?`${rows.length} صنف · الإجمالي ${fmt(tot)}${sup?' · '+sup:''}`:`${rows.length} صنف · ${rows.reduce((a,r)=>a+r.qty,0)} قطعة\nجرد مباشر بدون تسجيل شراء`,ok:'أضف'}))return;
   const waiting=[];
   for(const r of rows){
     let i=S.items.find(x=>norm(x.name)===norm(r.name));
     if(!i){i={id:uidGen(),name:r.name,qty:0,cost:0,at:Date.now()};S.items.push(i)}
+    if(r.cost===null){i.qty+=r.qty;continue}
     const total=r.qty*r.cost;
     i.cost=(i.qty*i.cost+total)/(i.qty+r.qty);i.qty+=r.qty;
     addTx({type:'buy',itemId:i.id,name:i.name,qty:r.qty,total,pay,credit,person:sup});
     waitingFor(i.name).forEach(o=>{if(!waiting.includes(o))waiting.push(o)});
   }
-  saveItems();E('');$('impTxt').value='';$('impSup').value='';$('impPrev').innerHTML='';$('impBox').open=false;render();toast(`انضافت ${rows.length} أصناف للمخزون`);
+  saveItems();E('');$('impTxt').value='';$('impSup').value='';$('impPrev').innerHTML='';$('impBox').open=false;render();toast(`انضافت ${rows.length} صنف للمخزون`);
   if(waiting.length)ask({title:'فيه زبائن طالبين أصناف من الفاتورة',msg:waiting.map(o=>`${o.name}${o.phone?' ('+o.phone+')':''} طلب ${o.item}`).join('\n'),ok:'تمام'});
 };
 // ---- orders ----
@@ -749,11 +761,14 @@ function ordWa(o){
     msg=`السلام عليكم ${o.name}\nأبغى أطلب:\n`+L.map((x,k)=>`${k+1}- ${x.item}`).join('\n')+'\nوشكراً';}
   const withPh=o.phone?o:S.orders.find(x=>x.phone&&x.kind===o.kind&&norm(x.name)===norm(o.name));
   const n=withPh?waNum(withPh.phone):'';
-  return (n?`https://wa.me/${n}`:'https://wa.me/')+'?text='+encodeURIComponent(msg);
+  let enc=encodeURIComponent(msg);
+  if(enc.length>3500)enc=encodeURIComponent(`السلام عليكم ${o.name}\nعندي طلبية كبيرة، أرسلها لك الحين ملف PDF.`);
+  return (n?`https://wa.me/${n}`:'https://wa.me/')+'?text='+enc;
 }
+const bd=t=>String(t).replace(/[A-Za-z0-9]+(?:[-–.][A-Za-z0-9]+)*/g,m=>'\u2066'+m+'\u2069'); // keep years/models in left-to-right order
 function ordLi(o){
   const ph=digits(o.phone);const done=!!o.done;
-  return `<li class="ord"><div class="top"><div class="t">${esc(o.item)}</div><div class="s">${dmy(o.day)}</div></div>
+  return `<li class="ord"><div class="top"><div class="t">${esc(bd(o.item))}</div><div class="s">${dmy(o.day)}</div></div>
    <div class="s">${o.kind==='c'?'زبون':'مورد'}: ${esc(o.name)}${o.phone?' · <span dir="ltr">'+esc(o.phone)+'</span>':''}${done?' · '+(o.kind==='c'?'تسلّمها':'وصلت')+' '+dmy(dkey(new Date(o.done))):''}</div>
    <div class="oacts">${!done&&ph?`<a href="tel:${esc(ph)}">📞 اتصال</a>`:''}${!done?`<a href="${esc(ordWa(o))}" target="_blank" rel="noopener">💬 ${o.kind==='c'?'بلّغه واتساب':'أرسل الطلبية واتساب'}</a>`:''}
    ${done?`<button data-oundo="${o.id}">↩ رجّعها</button>`:`<button class="done" data-odone="${o.id}">✓ ${o.kind==='c'?'تسلّمها':'وصلت'}</button>`}
@@ -1012,6 +1027,33 @@ async function buildPdf(A){
   }
   return pdf.output('blob');
 }
+// ---- bulk paste of orders ----
+function parseOb(){
+  let sup='',ph='',kind='';const rows=[];
+  for(let L of $('obTxt').value.split(/\r?\n/)){
+    L=L.replace(/^[\s`*\-•]+|[\s`*]+$/g,'');if(!L)continue;
+    let m=L.match(/^(?:مورد|المورد)\s*[:：]\s*(.+)$/);if(m){sup=m[1].trim();continue}
+    m=L.match(/^(?:جوال|الجوال|رقم)\s*[:：]\s*(.+)$/);if(m){ph=m[1].trim();continue}
+    m=L.match(/^(?:نوع|القطعة|قطعة)\s*[:：]\s*(.*)$/);if(m){kind=m[1].trim();continue}
+    const p=L.split(/\s*[|｜]\s*/);const name=p[0].trim();if(!name)continue;
+    const q=p.length>1?numA(p[1]):1;
+    rows.push({name,qty:q>0?q:1});
+  }
+  return{sup,ph,kind,rows};
+}
+function obPreview(){const{sup,rows}=parseOb();
+  $('obPrev').textContent=rows.length?`${rows.length} طلبية${sup?' · '+sup:' · اكتب اسم المورد فوق (مورد: ...)'} · مجموع القطع ${rows.reduce((a,r)=>a+r.qty,0)}`:''}
+$('obTxt').addEventListener('input',obPreview);
+$('obGo').onclick=async()=>{
+  const E=m=>$('obErr').textContent=m;const{sup,ph,kind,rows}=parseOb();
+  if(!rows.length)return E('الصق الطلبيات أول');
+  if(!sup)return E('اكتب سطر: مورد: اسم المورد');
+  if(!await ask({title:`تسجل ${rows.length} طلبية؟`,msg:`من ${sup}`,ok:'سجّلها'}))return;
+  const map={},now=Date.now();
+  rows.forEach((r,k)=>{const o={id:uidGen(),kind:'s',name:sup,phone:ph,item:(kind?kind+' ':'')+r.name+' × '+r.qty,day:workDay(),at:now+k,done:0};S.orders.push(o);map[o.id]=ordRec(o)});
+  if(shop)shop.doc('orders').set({map},{merge:true}).catch(saveErr);
+  E('');$('obTxt').value='';$('obPrev').textContent='';$('obBox').open=false;render();toast(`انسجلت ${rows.length} طلبية`);
+};
 // ---- open orders as PDF ----
 async function buildOrdersPdf(mode){
   await loadJs('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
@@ -1036,7 +1078,7 @@ async function buildOrdersPdf(mode){
     if(opt.bg){c.fillStyle=opt.bg;c.fillRect(M,y,W-2*M,RH)}
     c.strokeStyle='#b9c1c8';c.lineWidth=2;c.strokeRect(M,y,W-2*M,RH);xs.slice(0,-1).forEach(([a])=>{c.beginPath();c.moveTo(a,y);c.lineTo(a,y+RH);c.stroke()});
     vals.forEach((v,k)=>{const[a,b]=xs[k];const num=k===0||cols[k][0]==='التاريخ'||cols[k][0]==='الجوال';c.font=(opt.bold?'700 ':'400 ')+'27px '+(num?FB:F);c.fillStyle='#000';
-      if(num){c.textAlign='center';c.fillText(fit(c,'\u2066'+v+'\u2069',b-a-12),(a+b)/2,y+RH/2)}else{c.textAlign='right';c.fillText(fit(c,v,b-a-24),b-12,y+RH/2)}});
+      if(num){c.textAlign='center';c.fillText(fit(c,'\u2066'+v+'\u2069',b-a-12),(a+b)/2,y+RH/2)}else{c.textAlign='right';c.fillText(fit(c,bd(v),b-a-24),b-12,y+RH/2)}});
     y+=RH};
   groups.forEach(([title,L],gi)=>{
     if(y+RH*3>H-110)newPage();
