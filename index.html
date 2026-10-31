@@ -114,7 +114,9 @@ input.bad{border:2px solid var(--red);background:var(--rbg);color:var(--red)}
 .side button:active{transform:scale(.98)}
 .acchead{display:flex;justify-content:space-between;align-items:center;margin:4px 4px 12px}
 #accBal{font-size:1.05rem;margin-top:2px}
-.ledger{margin-top:14px;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.srch{display:flex;gap:8px;align-items:center;margin:14px 0 0}.srch input{flex:1;min-height:46px;border-radius:12px}.srch .x{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:1.4rem;cursor:pointer}
+.sumBox{margin-top:10px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.92rem}.sumBox .big{font-size:1.25rem;font-weight:700;margin-top:4px}
+.ledger{margin-top:10px;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .lrow{display:grid;grid-template-columns:78px 62px 1fr 84px 28px;gap:6px;align-items:center;padding:11px 10px;border-bottom:1px solid var(--line);font-size:.92rem}
 .lrow.h{background:var(--chip);font-weight:700;font-size:.85rem;padding:9px 10px}
 .lrow:last-child{border-bottom:0}
@@ -363,6 +365,8 @@ body.locked{overflow:hidden}
     <div class="err" id="aErr"></div>
   </div>
   <div class="acts"><button class="btn" id="stPdf">مشاركة PDF</button><button class="btn wa" id="stWa">واتساب</button><button class="btn small" id="stClose2" style="min-height:48px">إغلاق</button></div>
+  <div class="srch"><input id="stSearch" autocomplete="off" placeholder="ابحث: حوالة، تمارا، كاش، شبكة، دين، أو كلمة من التفاصيل"><button class="x" id="stSearchX" aria-label="مسح البحث" hidden>×</button></div>
+  <div class="sumBox" id="stSum" hidden></div>
   <div class="ledger" id="ledger"></div>
 </div></div>
 <div id="pdfStage" aria-hidden="true"></div>
@@ -972,19 +976,35 @@ async function editEntry(id){
 }
 // ---- account view ----
 let curAcc=null;
-function openStatement(name){curAcc=known(name);$('aDate').value=workDay();$('aErr').textContent='';drawAccount();$('sheet').hidden=false;$('stWho').value=''}
+// text a search is matched against for one ledger row (method, type, side, item, details, names)
+function srchText(e){const t=e.t;
+  const pay=t.type==='sale'?PAY[payOf(t)]:'';
+  const m=(t.type==='entry'||t.type==='pay')&&t.method?METH[t.method]:'';
+  const cash=(pay==='نقد'||m==='كاش')?'كاش نقد':'';
+  const kind={sale:'بيع بيع بالدين',buy:'شراء شراء آجل',pay:'تسديد',entry:'دين'}[t.type]||'';
+  return norm([t.note,t.name,t.item,t.person,pay,m,cash,kind,e.side==='a'?'عليه':'له',e.side==='a'?'':(m?'تسديد سداد':'')].join(' '));}
+function openStatement(name){curAcc=known(name);$('aDate').value=workDay();$('aErr').textContent='';$('stSearch').value='';drawAccount();$('sheet').hidden=false;$('stWho').value=''}
 function drawAccount(){
   const A=accountOf(curAcc);
   $('accName').textContent=A.name;
   $('accBal').textContent=balTxt(A.bal);$('accBal').className='amt '+(A.bal>0.005?'r':A.bal<-0.005?'g':'');
+  const q=norm($('stSearch')?$('stSearch').value:'');
+  const L=q?A.L.filter(e=>srchText(e).includes(q)):A.L;
+  $('stSearchX').hidden=!q;
+  const sumBox=$('stSum');
+  if(q){let sa=0,sl=0;L.forEach(e=>{if(e.side==='a')sa+=e.amt;else sl+=e.amt});
+    sumBox.hidden=false;sumBox.innerHTML=`نتائج "${esc($('stSearch').value.trim())}": <b>${L.length}</b> عملية`+(L.length?`<div>عليه: ${fmt(sa)} · له: ${fmt(sl)}</div><div class="big">الإجمالي: ${fmt(sa+sl)}</div>`:'')}
+  else sumBox.hidden=true;
   $('ledger').innerHTML=`<div class="lrow h"><span>التاريخ</span><span>المبلغ</span><span>التفاصيل</span><span>الرصيد</span><span></span></div>`+
-    (A.L.length?A.L.slice().reverse().map(e=>`<div class="lrow" data-edit="${e.t.id}" style="cursor:pointer"><span class="d">${dmy(e.t.day)}</span><span class="m">${fmt(e.amt)}</span><span>${esc(e.note)}</span><span class="b">${fmt(Math.abs(e.bal))}<small class="${e.side==='a'?'r':'g'}">${e.side==='a'?'▼':'▲'}</small></span><button class="x" data-del="${e.t.id}" aria-label="حذف">×</button></div>`).join(''):'<div class="empty">ما فيه عمليات لهذا الاسم بعد. سجّل أول مبلغ فوق</div>')+(A.L.length?'<div class="hint" style="text-align:center;margin-top:8px">اضغط على أي عملية عشان تعدّلها</div>':'');
+    (L.length?L.slice().reverse().map(e=>`<div class="lrow" data-edit="${e.t.id}" style="cursor:pointer"><span class="d">${dmy(e.t.day)}</span><span class="m">${fmt(e.amt)}</span><span>${esc(e.note)}</span><span class="b">${fmt(Math.abs(e.bal))}<small class="${e.side==='a'?'r':'g'}">${e.side==='a'?'▼':'▲'}</small></span><button class="x" data-del="${e.t.id}" aria-label="حذف">×</button></div>`).join(''):(q?'<div class="empty">ما فيه نتائج لهذا البحث</div>':'<div class="empty">ما فيه عمليات لهذا الاسم بعد. سجّل أول مبلغ فوق</div>'))+(A.L.length?'<div class="hint" style="text-align:center;margin-top:8px">اضغط على أي عملية عشان تعدّلها</div>':'');
 }
 function accText(A){
   return `كشف حساب: ${A.name}\nبتاريخ ${dmy(dkey())}\n\n`+A.L.map(e=>`${dmy(e.t.day)} | ${e.note} | ${e.side==='a'?'عليه':'له'} ${fmt(e.amt)} | الرصيد ${fmt(Math.abs(e.bal))}`).join('\n')+
    `\n\nإجمالي عليه: ${fmt(A.ta)}\nإجمالي له: ${fmt(A.tl)}\nالإجمالي: ${balTxt(A.bal)}`;
 }
 $('stClose').onclick=$('stClose2').onclick=()=>{$('sheet').hidden=true;curAcc=null};
+$('stSearch').addEventListener('input',()=>drawAccount());
+$('stSearchX').onclick=()=>{$('stSearch').value='';drawAccount();$('stSearch').focus()};
 $('sheet').addEventListener('click',e=>{if(e.target.id==='sheet'){$('sheet').hidden=true;curAcc=null}});
 $('stWa').onclick=()=>{window.open('https://wa.me/?text='+encodeURIComponent(accText(accountOf(curAcc))),'_blank')};
 // ---- PDF ----
