@@ -246,6 +246,8 @@ body.locked{overflow:hidden}
       <div><label for="sQty">الكمية</label><input id="sQty" type="number" inputmode="numeric" min="1" value="1"></div>
       <div><label for="sTotal">المبلغ الكلي</label><input id="sTotal" type="number" inputmode="decimal" min="0"></div>
     </div>
+    <div id="cartBox" class="box" hidden style="margin:8px 0"><ul class="list" id="cartList"></ul><div class="t" id="cartTot" style="display:flex;justify-content:space-between;padding-top:8px"></div></div>
+    <button class="btn small" id="addLine" style="min-height:46px;margin-bottom:8px">➕ أضف صنف ثاني للبيعة</button>
     <label>طريقة الدفع</label>
     <div class="seg" id="sPay"><button aria-pressed="true" data-v="cash">نقد</button><button aria-pressed="false" data-v="card">شبكة</button><button aria-pressed="false" data-v="tamara">تمارا</button><button aria-pressed="false" data-v="credit">دين</button><button aria-pressed="false" data-v="split">مقسّم</button></div>
     <div id="sSplit" class="box" hidden style="margin-top:10px"><div class="hint" style="margin:0 0 8px">وزّع المبلغ على طرق الدفع (ما تحتاج كل الخانات):</div>
@@ -806,7 +808,8 @@ $('t-ord').addEventListener('click',async e=>{
 });
 function waitingFor(name){const n=norm(name);return S.orders.filter(o=>!o.done&&o.kind==='c'&&(norm(o.item)===n||norm(o.item).includes(n)||n.includes(norm(o.item))))}
 $('sPay').addEventListener('change',()=>{const v=segVal('sPay');$('sWhoLbl').textContent=v==='credit'?'اسم الزبون (ضروري للدين)':v==='split'?'اسم الزبون (ضروري إذا فيه جزء دين)':'اسم الزبون (اختياري، يفيدك في كشف الحساب)';$('sSplit').hidden=v!=='split';splitHint()});
-function splitHint(){const t=+$('sTotal').value||0;const sum=['sSC','sSK','sST','sSD'].reduce((a,id)=>a+(numA($(id).value)||0),0);const rest=t-sum;
+function saleTotalNow(){return cart.reduce((a,l)=>a+l.total,0)+($('sTotal').value!==''?(+$('sTotal').value||0):0)}
+function splitHint(){const t=saleTotalNow();const sum=['sSC','sSK','sST','sSD'].reduce((a,id)=>a+(numA($(id).value)||0),0);const rest=t-sum;
   $('sSLeft').textContent=!t?'اكتب الإجمالي فوق':Math.abs(rest)<0.005?'✓ المقسّم يساوي الإجمالي':rest>0?`باقي ${fmt(rest)} ما توزّع`:`زايد ${fmt(-rest)}`}
 ['sSC','sSK','sST','sSD','sTotal'].forEach(id=>$(id).addEventListener('input',splitHint));
 // ---- searchable item picker ----
@@ -891,24 +894,58 @@ function resolveSale(){
   const ex=S.items.filter(i=>norm(i.name)===norm(q));const m=ex.length?ex:matchItems(q);
   if(m.length===1){saleSel=m[0].id;$('sQ').value=m[0].name;pickedLabel()}
 }
+let cart=[];
+function cartTotal(){return cart.reduce((a,l)=>a+l.total,0)}
+function cartRender(){
+  $('cartBox').hidden=!cart.length;
+  $('cartList').innerHTML=cart.map((l,k)=>`<li><div><div class="t">${esc(l.qty)} × ${esc(bd(l.name))}</div></div><div style="display:flex;gap:8px;align-items:center"><span class="amt">${fmt(l.total)}</span><button class="x" data-cdel="${k}" aria-label="حذف">×</button></div></li>`).join('');
+  $('cartTot').innerHTML=`<span>إجمالي البيعة (${cart.length} صنف)</span><span>${fmt(cartTotal())}</span>`;
+  splitHint();
+}
+$('cartList').addEventListener('click',e=>{const b=e.target.closest('[data-cdel]');if(!b)return;cart.splice(+b.dataset.cdel,1);cartRender()});
+function resetLine(){$('sQty').value=1;$('sTotal').value='';$('sQ').value='';saleSel=null}
+// current form line -> line object, or null (after showing the error)
+function lineFromForm(E){
+  const i=item(saleSel),qty=+$('sQty').value,total=+$('sTotal').value;
+  if(!i)return E($('sQ').value.trim()?'فيه أكثر من صنف بهذا الاسم أو ما هو موجود، اختر من القائمة':'اكتب اسم الصنف واختره من القائمة'),null;
+  if(!(qty>0))return E('اكتب الكمية'),null;
+  const inCart=cart.filter(l=>l.itemId===i.id).reduce((a,l)=>a+l.qty,0);
+  if(qty+inCart>i.qty)return E(`المتوفر من ${i.name} ${i.qty} بس`),null;
+  if(!(total>=0)||$('sTotal').value==='')return E('اكتب المبلغ'),null;
+  return{itemId:i.id,name:i.name,qty,total,cost:i.cost*qty};
+}
+$('addLine').onclick=()=>{
+  resolveSale();const E=m=>{$('sErr').textContent=m;if(m)toast(m)};
+  const l=lineFromForm(E);if(!l)return;
+  cart.push(l);resetLine();E('');cartRender();$('sQ').focus();
+};
 $('addSale').onclick=()=>{
   resolveSale();
-  const i=item(saleSel),qty=+$('sQty').value,total=+$('sTotal').value,pay=segVal('sPay'),credit=pay==='credit',person=$('sWho').value.trim();
   const E=m=>{$('sErr').textContent=m;if(m)toast(m)};
-  if(!i)return E($('sQ').value.trim()?'فيه أكثر من صنف بهذا الاسم أو ما هو موجود، اختر من القائمة':'اكتب اسم الصنف واختره من القائمة');if(!(qty>0))return E('اكتب الكمية');
-  if(qty>i.qty)return E(`المتوفر من ${i.name} ${i.qty} بس`);
-  if(!(total>=0)||$('sTotal').value==='')return E('اكتب المبلغ');
+  if($('sTotal').value!==''||$('sQ').value.trim()){const l=lineFromForm(E);if(!l)return;cart.push(l);resetLine()}
+  if(!cart.length)return E('اكتب الصنف والكمية والمبلغ');
+  const pay=segVal('sPay'),person=$('sWho').value.trim(),credit=pay==='credit',total=cartTotal();
   if(credit&&!person)return E('اكتب اسم الزبون');
   let split=null;
-  if(pay==='split'){split={cash:numA($('sSC').value)||0,card:numA($('sSK').value)||0,tamara:numA($('sST').value)||0,credit:numA($('sSD').value)||0};
+  if(pay==='split'){
+    if(!(total>0))return E('اكتب المبالغ أول');
+    split={cash:numA($('sSC').value)||0,card:numA($('sSK').value)||0,tamara:numA($('sST').value)||0,credit:numA($('sSD').value)||0};
     const sum=split.cash+split.card+split.tamara+split.credit;
-    if(!(total>0))return E('اكتب المبلغ الكلي');
     if(Math.abs(sum-total)>0.005)return E(`المقسّم ${fmt(sum)} ما يساوي الإجمالي ${fmt(total)}`);
-    if(split.credit>0&&!person)return E('اكتب اسم الزبون (فيه جزء دين)');}
-  i.qty-=qty;saveItems();
-  addTx(Object.assign({type:'sale',itemId:i.id,name:i.name,qty,total,cost:i.cost*qty,pay,credit,person},split?{split}:{}));
-  ['sSC','sSK','sST','sSD'].forEach(id=>$(id).value='');
-  E('');$('sQty').value=1;$('sTotal').value='';$('sWho').value='';$('sQ').value='';saleSel=null;render();toast(total<i.cost*qty?'انسجل البيع، وهو بخسارة':credit?`انسجل دين على ${person}`:`انسجل البيع (${split?payLabel({split}):PAY[pay]})`);
+    if(split.credit>0&&!person)return E('اكتب اسم الزبون (فيه جزء دين)');
+  }
+  // share the split across lines in order (cash first), so each line's parts add up to its own total
+  const rem=split?Object.assign({},split):null;
+  const lines=cart.map(l=>{let need=l.total;let sp=null;
+    if(rem){sp={cash:0,card:0,tamara:0,credit:0};
+      for(const k of ['cash','card','tamara','credit']){const take=Math.min(rem[k],need);sp[k]=Math.round(take*100)/100;rem[k]=Math.round((rem[k]-take)*100)/100;need=Math.round((need-take)*100)/100}}
+    return Object.assign({},l,sp?{split:sp}:{})});
+  lines.forEach(l=>{const it=S.items.find(x=>x.id===l.itemId);if(it)it.qty-=l.qty;
+    addTx(Object.assign({type:'sale',itemId:l.itemId,name:l.name,qty:l.qty,total:l.total,cost:l.cost,pay,credit,person},l.split?{split:l.split}:{}))});
+  saveItems();
+  const n=cart.length;cart=[];cartRender();['sSC','sSK','sST','sSD'].forEach(id=>$(id).value='');
+  E('');$('sWho').value='';resetLine();render();
+  toast(`انسجلت البيعة (${n} صنف) · ${fmt(total)}`+(credit?` · دين على ${person}`:''));
 };
 $('addBuy').onclick=()=>{
   const E=m=>$('pErr').textContent=m;
