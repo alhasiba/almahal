@@ -371,6 +371,7 @@ body.locked{overflow:hidden}
     <div class="err" id="aErr"></div>
   </div>
   <div class="acts"><button class="btn" id="stPdf">مشاركة PDF</button><button class="btn wa" id="stWa">واتساب</button><button class="btn small" id="stClose2" style="min-height:48px">إغلاق</button></div>
+  <div class="row" style="margin:14px 0 0;align-items:end"><div style="flex:1"><label for="stMonth">عرض الكشف</label><select id="stMonth" style="width:100%;min-height:46px;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:0 10px"></select></div></div>
   <div class="srch"><input id="stSearch" autocomplete="off" placeholder="ابحث: حوالة، تمارا، كاش، شبكة، دين، أو كلمة من التفاصيل"><button class="x" id="stSearchX" aria-label="مسح البحث" hidden>×</button></div>
   <div class="sumBox" id="stSum" hidden></div>
   <div class="ledger" id="ledger"></div>
@@ -557,6 +558,18 @@ function accountOf(name){
   L.forEach(e=>{if(e.side==='a'){bal+=e.amt;ta+=e.amt}else{bal-=e.amt;tl+=e.amt}e.bal=bal});
   return{name:L.length?L[L.length-1].t.person:name,L,bal,ta,tl};
 }
+const ym=d=>d.slice(0,7);
+const monthName=m=>{const [y,mo]=m.split('-').map(Number);return ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][mo-1]+' '+y};
+// statement view: entries from month `from` on, with the balance carried from before it
+function accView(name,from){
+  const A=accountOf(name);
+  if(!from||from==='all')return Object.assign({},A,{openHas:false,from:'all'});
+  const start=from+'-01';
+  const prev=A.L.filter(e=>e.t.day<start),L=A.L.filter(e=>e.t.day>=start);
+  let ta=0,tl=0;L.forEach(e=>{if(e.side==='a')ta+=e.amt;else tl+=e.amt});
+  return Object.assign({},A,{L,ta,tl,from,openHas:prev.length>0,open:prev.length?prev[prev.length-1].bal:0});
+}
+let accFrom=null;const curMonth=()=>ym(dkey());
 const balTxt=b=>Math.abs(b)<0.005?'خالص':(b>0?'عليه ':'له ')+fmt(Math.abs(b));
 const dmy=d=>d.split('-').reverse().join('-');
 function dayReport(day){return reportFor(t=>t.day===day)}
@@ -1038,9 +1051,17 @@ function srchText(e){const t=e.t;
   const cash=(/نقد/.test(pay)||m==='كاش')?'كاش نقد':'';
   const kind={sale:'بيع بيع بالدين',buy:'شراء شراء آجل',pay:'تسديد',entry:'دين'}[t.type]||'';
   return norm([t.note,t.name,t.item,t.person,pay,m,cash,kind,e.side==='a'?'عليه':'له',e.side==='a'?'':(m?'تسديد سداد':'')].join(' '));}
-function openStatement(name){curAcc=known(name);$('aDate').value=workDay();$('aErr').textContent='';$('stSearch').value='';drawAccount();$('sheet').hidden=false;$('stWho').value=''}
+function openStatement(name){curAcc=known(name);$('aDate').value=workDay();$('aErr').textContent='';$('stSearch').value='';accFrom=curMonth();drawAccount();$('sheet').hidden=false;$('stWho').value=''}
 function drawAccount(){
-  const A=accountOf(curAcc);
+  const full=accountOf(curAcc);
+  // month options: every month from the first entry up to now
+  const sel=$('stMonth');const first=full.L.length?ym(full.L[0].t.day):curMonth();
+  const ms=[];for(let m=curMonth();m>=first;){ms.push(m);const [y,mo]=m.split('-').map(Number);m=mo===1?`${y-1}-12`:`${y}-${String(mo-1).padStart(2,'0')}`}
+  if(!accFrom)accFrom=curMonth();
+  sel.innerHTML=ms.map((m,k)=>`<option value="${m}">${k?'من '+monthName(m)+' إلى اليوم':'هذا الشهر ('+monthName(m)+')'}</option>`).join('')+'<option value="all">كل العمليات من البداية</option>';
+  sel.value=ms.includes(accFrom)||accFrom==='all'?accFrom:curMonth();
+  const qq=norm($('stSearch')?$('stSearch').value:'');
+  const A=qq?Object.assign({},full,{openHas:false}):accView(curAcc,sel.value);
   $('accName').textContent=A.name;
   $('accBal').textContent=balTxt(A.bal);$('accBal').className='amt '+(A.bal>0.005?'r':A.bal<-0.005?'g':'');
   const q=norm($('stSearch')?$('stSearch').value:'');
@@ -1050,18 +1071,20 @@ function drawAccount(){
   if(q){let sa=0,sl=0;L.forEach(e=>{if(e.side==='a')sa+=e.amt;else sl+=e.amt});
     sumBox.hidden=false;sumBox.innerHTML=`نتائج "${esc($('stSearch').value.trim())}": <b>${L.length}</b> عملية`+(L.length?`<div>عليه: ${fmt(sa)} · له: ${fmt(sl)}</div><div class="big">الإجمالي: ${fmt(sa+sl)}</div>`:'')}
   else sumBox.hidden=true;
+  const openRow=A.openHas?`<div class="lrow" style="background:var(--bg);font-weight:700"><span class="d">${dmy(A.from+'-01')}</span><span class="m"></span><span>رصيد سابق (مرحّل)</span><span class="b">${fmt(Math.abs(A.open))}<small class="${A.open>0.005?'r':'g'}">${A.open>0.005?'▼':A.open<-0.005?'▲':''}</small></span><span></span></div>`:'';
   $('ledger').innerHTML=`<div class="lrow h"><span>التاريخ</span><span>المبلغ</span><span>التفاصيل</span><span>الرصيد</span><span></span></div>`+
-    (L.length?L.slice().reverse().map(e=>`<div class="lrow" data-edit="${e.t.id}" style="cursor:pointer"><span class="d">${dmy(e.t.day)}</span><span class="m">${fmt(e.amt)}</span><span>${esc(e.note)}</span><span class="b">${fmt(Math.abs(e.bal))}<small class="${e.side==='a'?'r':'g'}">${e.side==='a'?'▼':'▲'}</small></span><button class="x" data-del="${e.t.id}" aria-label="حذف">×</button></div>`).join(''):(q?'<div class="empty">ما فيه نتائج لهذا البحث</div>':'<div class="empty">ما فيه عمليات لهذا الاسم بعد. سجّل أول مبلغ فوق</div>'))+(A.L.length?'<div class="hint" style="text-align:center;margin-top:8px">اضغط على أي عملية عشان تعدّلها</div>':'');
+    (L.length?L.slice().reverse().map(e=>`<div class="lrow" data-edit="${e.t.id}" style="cursor:pointer"><span class="d">${dmy(e.t.day)}</span><span class="m">${fmt(e.amt)}</span><span>${esc(e.note)}</span><span class="b">${fmt(Math.abs(e.bal))}<small class="${e.side==='a'?'r':'g'}">${e.side==='a'?'▼':'▲'}</small></span><button class="x" data-del="${e.t.id}" aria-label="حذف">×</button></div>`).join('')+openRow:openRow+(q?'<div class="empty">ما فيه نتائج لهذا البحث</div>':'<div class="empty">ما فيه عمليات لهذا الاسم بعد. سجّل أول مبلغ فوق</div>'))+(A.L.length?'<div class="hint" style="text-align:center;margin-top:8px">اضغط على أي عملية عشان تعدّلها</div>':'');
 }
 function accText(A){
-  return `كشف حساب: ${A.name}\nبتاريخ ${dmy(dkey())}\n\n`+A.L.map(e=>`${dmy(e.t.day)} | ${e.note} | ${e.side==='a'?'عليه':'له'} ${fmt(e.amt)} | الرصيد ${fmt(Math.abs(e.bal))}`).join('\n')+
+  return `كشف حساب: ${A.name}\nبتاريخ ${dmy(dkey())}\n\n`+(A.openHas?`رصيد سابق حتى نهاية ${monthName(ym(addDays(A.from+'-01',-1)))}: ${balTxt(A.open)}\n`:'')+A.L.map(e=>`${dmy(e.t.day)} | ${e.note} | ${e.side==='a'?'عليه':'له'} ${fmt(e.amt)} | الرصيد ${fmt(Math.abs(e.bal))}`).join('\n')+
    `\n\nإجمالي عليه: ${fmt(A.ta)}\nإجمالي له: ${fmt(A.tl)}\nالإجمالي: ${balTxt(A.bal)}`;
 }
 $('stClose').onclick=$('stClose2').onclick=()=>{$('sheet').hidden=true;curAcc=null};
 $('stSearch').addEventListener('input',()=>drawAccount());
+$('stMonth').addEventListener('change',()=>{accFrom=$('stMonth').value;drawAccount()});
 $('stSearchX').onclick=()=>{$('stSearch').value='';drawAccount();$('stSearch').focus()};
 $('sheet').addEventListener('click',e=>{if(e.target.id==='sheet'){$('sheet').hidden=true;curAcc=null}});
-$('stWa').onclick=()=>{window.open('https://wa.me/?text='+encodeURIComponent(accText(accountOf(curAcc))),'_blank')};
+$('stWa').onclick=()=>{window.open('https://wa.me/?text='+encodeURIComponent(accText(accView(curAcc,accFrom))),'_blank')};
 // ---- PDF ----
 const loadJs=src=>new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`))return res();const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)});
 async function buildPdf(A){
@@ -1070,7 +1093,7 @@ async function buildPdf(A){
   const F='"IBM Plex Sans Arabic", Tahoma, sans-serif',FB='"Readex Pro", "IBM Plex Sans Arabic", Tahoma, sans-serif';
   try{await Promise.all([document.fonts.load('400 28px "IBM Plex Sans Arabic"'),document.fonts.load('700 28px "IBM Plex Sans Arabic"'),document.fonts.load('700 48px "Readex Pro"')])}catch(e){}
   const W=1588,H=2246,M=80,RH=62,HEAD=250,per=Math.floor((H-HEAD-120-2*RH)/RH)-2;
-  const rows=A.L,pages=Math.max(1,Math.ceil((rows.length+3)/per));
+  const rows=(A.openHas?[{open:true}]:[]).concat(A.L),pages=Math.max(1,Math.ceil((rows.length+3)/per));
   // columns right -> left
   const cols=[['التاريخ',200],['التفاصيل',0],['عليه',175],['له',175],['الرصيد',195]];
   const fixed=cols.reduce((s,c)=>s+c[1],0);cols[1][1]=W-2*M-fixed;
@@ -1081,14 +1104,16 @@ async function buildPdf(A){
     const cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d');
     c.fillStyle='#fff';c.fillRect(0,0,W,H);c.direction='rtl';c.textBaseline='middle';
     c.fillStyle='#000';c.textAlign='center';c.font='700 50px '+FB;c.fillText('كشف الحساب # '+A.name,W/2,110);
-    c.font='400 30px '+F;c.fillStyle='#333';c.fillText(dmy(dkey()),W/2,175);
+    c.font='400 30px '+F;c.fillStyle='#333';c.fillText(A.from&&A.from!=='all'?('من '+dmy(A.from+'-01')+' إلى '+dmy(dkey())):dmy(dkey()),W/2,175);
     let y=HEAD;
     const cell=(k,t,opt={})=>{const [a,b]=xs[k];c.font=(opt.bold?'700 ':'400 ')+(opt.size||28)+'px '+(opt.num?FB:F);c.fillStyle=opt.color||'#000';
       if(opt.right){c.textAlign='right';c.fillText(fit(c,t,b-a-24),b-12,y+RH/2)}else{c.textAlign='center';c.fillText(fit(c,t,b-a-12),(a+b)/2,y+RH/2)}};
     const line=(bg)=>{if(bg){c.fillStyle=bg;c.fillRect(M,y,W-2*M,RH)}c.strokeStyle='#b9c1c8';c.lineWidth=2;c.strokeRect(M,y,W-2*M,RH);xs.slice(0,-1).forEach(([a])=>{c.beginPath();c.moveTo(a,y);c.lineTo(a,y+RH);c.stroke()})};
     line('#e9edf0');cols.forEach((col,k)=>cell(k,col[0],{bold:true}));y+=RH;
     const chunk=rows.slice(p*per,(p+1)*per);
-    chunk.forEach(e=>{line();cell(0,dmy(e.t.day),{num:true,size:26});cell(1,e.note,{right:true});
+    chunk.forEach(e=>{if(e.open){line('#f4f6f7');cell(0,dmy(A.from+'-01'),{num:true,size:26});cell(1,'رصيد سابق (مرحّل من '+monthName(ym(addDays(A.from+'-01',-1)))+')',{right:true,bold:true});
+        cell(2,A.open>0.005?fmt(A.open):'',{num:true});cell(3,A.open<-0.005?fmt(-A.open):'',{num:true});cell(4,fmt(Math.abs(A.open)),{num:true,bold:true});y+=RH;return}
+      line();cell(0,dmy(e.t.day),{num:true,size:26});cell(1,e.note,{right:true});
       cell(2,e.side==='a'?fmt(e.amt):'',{num:true});cell(3,e.side==='l'?fmt(e.amt):'',{num:true});cell(4,fmt(Math.abs(e.bal)),{num:true,bold:true});y+=RH});
     if(p===pages-1){
       line('#f4f6f7');cell(1,'إجمالي العمليات',{bold:true});cell(2,fmt(A.ta),{num:true,bold:true});cell(3,fmt(A.tl),{num:true,bold:true});y+=RH+40;
@@ -1295,7 +1320,7 @@ let pdfWarm=null;
 function warmPdf(){if(!pdfWarm)pdfWarm=loadJs('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js').then(()=>document.fonts&&Promise.all([document.fonts.load('400 28px "IBM Plex Sans Arabic"'),document.fonts.load('700 28px "IBM Plex Sans Arabic"'),document.fonts.load('700 48px "Readex Pro"')])).catch(()=>{pdfWarm=null});return pdfWarm}
 async function offerSend(person){
   if(S.meta&&S.meta.noSendAsk)return;
-  const A=accountOf(person);if(!A.L.length)return;
+  const A=accView(person,curMonth());if(!A.L.length&&!A.openHas)return;
   // try to open the share sheet straight away (works while the tap is still fresh)
   try{
     const blob=await buildPdf(A);const f=new File([blob],`كشف_${A.name.replace(/\s+/g,'_')}.pdf`,{type:'application/pdf'});
@@ -1309,8 +1334,8 @@ async function offerSend(person){
   sharePdf(A,blob);
 }
 $('stPdf').onclick=async()=>{
-  const b=$('stPdf');if(b.disabled)return;const A=accountOf(curAcc);
-  if(!A.L.length)return toast('ما فيه عمليات في هذا الحساب');
+  const b=$('stPdf');if(b.disabled)return;const A=accView(curAcc,accFrom);
+  if(!A.L.length&&!A.openHas)return toast('ما فيه عمليات في هذا الحساب');
   b.disabled=true;b.textContent='جاري التجهيز...';
   const fname=`كشف_${A.name.replace(/\s+/g,'_')}.pdf`;
   try{
