@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>المحل</title>
+<title>الحاسبة</title>
 <meta name="theme-color" content="#16212B">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="المحل">
+<meta name="apple-mobile-web-app-title" content="الحاسبة">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -177,9 +177,9 @@ body.locked{overflow:hidden}
 <div id="lock" role="dialog" aria-modal="true" aria-labelledby="lockT">
   <div class="lockbox">
     <div class="lockicon" aria-hidden="true">🔒</div>
-    <h1 id="lockT">المحل</h1>
-    <div id="lockEmailWrap"><label for="lockEmail">الإيميل</label>
-    <input id="lockEmail" type="email" autocomplete="username" dir="ltr" inputmode="email"></div>
+    <h1 id="lockT">الحاسبة</h1>
+    <div id="lockEmailWrap"><label for="lockEmail">اسم المستخدم أو الإيميل</label>
+    <input id="lockEmail" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" dir="ltr" placeholder="rasheed"></div>
     <label for="lockPw">كلمة المرور</label>
     <input id="lockPw" type="password" autocomplete="current-password" dir="ltr">
     <button class="btn" id="lockGo">دخول</button>
@@ -187,7 +187,7 @@ body.locked{overflow:hidden}
     <button class="btn small" id="lockSwitch" hidden style="margin-top:10px">دخول بحساب ثاني</button>
   </div>
 </div>
-<header><div><h1>المحل</h1><span class="date" id="today"></span></div>
+<header><div><h1>الحاسبة</h1><span class="date" id="today"></span></div>
   <div class="menuwrap"><button class="dots" id="menuBtn" aria-label="الإعدادات" aria-haspopup="true" aria-expanded="false">⋮<span class="bkdot" id="bkDot" hidden></span></button>
     <div class="menu" id="menu" hidden role="menu">
       <button role="menuitem" data-m="backup">💾 النسخة الاحتياطية <small class="date" id="bkTxt"></small></button>
@@ -527,7 +527,7 @@ function dropOrders(ids){if(!shop||!ids.length)return;const map={};ids.forEach(i
 function saveMonth(){syncAll()}
 const workDay=()=>$('rdate').value||dkey();
 // ---- roles: the owner sees everything; any other signed-in account is a worker (sale + expense only)
-const OWNER_EMAILS=['rrttrrtt258@gmail.com'];
+const OWNER_EMAILS=['rrttrrtt258@gmail.com','rasheed@almahal.com'];
 let ROLE='owner';
 const isWorker=()=>ROLE==='worker';
 const meEmail=()=>(auth&&auth.currentUser&&auth.currentUser.email||'').toLowerCase();
@@ -1193,7 +1193,7 @@ async function buildOrdersPdf(mode){
   const newPage=()=>{if(c)flush();cv=document.createElement('canvas');cv.width=W;cv.height=H;c=cv.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,W,H);c.direction='rtl';c.textBaseline='middle';page++;y=M};
   newPage();
   c.fillStyle='#000';c.textAlign='center';c.font='700 54px '+FB;c.fillText('الطلبيات',W/2,y+40);
-  c.font='400 32px '+F;c.fillStyle='#333';c.fillText('المحل · \u2066'+dmy(dkey())+'\u2069 · '+open.length+' طلبية',W/2,y+105);y+=170;
+  c.font='400 32px '+F;c.fillStyle='#333';c.fillText('الحاسبة · \u2066'+dmy(dkey())+'\u2069 · '+open.length+' طلبية',W/2,y+105);y+=170;
   const cols=mode==='items'?[['#',90],['الصنف',0],['التاريخ',230]]:[['#',90],['الصنف',0],['الاسم',330],['الجوال',270],['التاريخ',210]];
   cols[1][1]=W-2*M-cols.reduce((a,c2)=>a+c2[1],0);
   const xs=[];let x=W-M;cols.forEach(cl=>{xs.push([x-cl[1],x]);x-=cl[1]});
@@ -1294,7 +1294,7 @@ function buildReportPdf(){ // today / selected work day
   const day=workDay(),r=dayReport(day);
   const ops=allTx().filter(t=>t.day===day&&t.type!=='buy').map(describe);
   return buildReportDoc({title:'التقرير اليومي',
-    sub:'المحل · '+new Date(day+'T12:00').toLocaleDateString('ar',{weekday:'long'})+' '+dmy(day),
+    sub:'الحاسبة · '+new Date(day+'T12:00').toLocaleDateString('ar',{weekday:'long'})+' '+dmy(day),
     lines:receiptLines(r),
     tables:[{title:`عمليات اليوم (${ops.length})`,cols:[{h:'العملية',w:560},{h:'التفاصيل'},{h:'المبلغ',w:220,num:1}],
       rows:ops.map(o=>({v:[o.t,o.s||'',o.a],colors:[0,0,CLR[o.c]||0]}))}]});
@@ -1307,7 +1307,7 @@ function buildRangePdf(mode,anchor){
   const top={};r.T.filter(t=>t.type==='sale').forEach(t=>{const o=top[t.name]=top[t.name]||{q:0,s:0,p:0};o.q+=t.qty;o.s+=t.total;o.p+=t.total-t.cost});
   const tl=Object.entries(top).sort((a,b)=>b[1].q-a[1].q).slice(0,mode==='week'?8:15);
   return buildReportDoc({title:mode==='custom'?'تقرير مخصص':mode==='week'?'التقرير الأسبوعي':'التقرير الشهري',
-    sub:'المحل · '+(mode!=='month'?`من ${dmy(from)} إلى ${dmy(to)}`:`${MONTHS[m0-1]} ${y0}`),
+    sub:'الحاسبة · '+(mode!=='month'?`من ${dmy(from)} إلى ${dmy(to)}`:`${MONTHS[m0-1]} ${y0}`),
     lines:receiptLines(r),
     tables:[
       {title:'حسب الأيام',cols:[{h:'اليوم',w:420},{h:'المبيعات',w:330,num:1},{h:'الربح',w:330,num:1},{h:'الخرج',num:1}],
@@ -1487,7 +1487,7 @@ function openBackup(){
 }
 async function doBackup(){
   const data={app:'shop-ledger',version:1,savedAt:new Date().toISOString(),items:S.items,months:S.months,orders:S.orders};
-  const fname=`المحل_نسخة_${dkey()}.json`;
+  const fname=`الحاسبة_نسخة_${dkey()}.json`;
   const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
   let ok=false;
   try{const f=new File([blob],fname,{type:'application/json'});
@@ -1556,7 +1556,8 @@ async function tryUnlock(){
     try{await withTimeout(u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pw)),20000);localStorage.setItem(LH,await sha(u.email+'\n'+pw));$('lockGo').textContent='دخول';return unlocked()}
     catch(e){$('lockGo').textContent='دخول';$('lockPw').value='';E.textContent=authMsg(e);if(e.code!=='timeout')tooMany();return}
   }
-  const email=$('lockEmail').value.trim();if(!email){E.textContent='اكتب الإيميل';return}
+  let email=$('lockEmail').value.trim().toLowerCase();if(!email){E.textContent='اكتب اسم المستخدم';return}
+  if(!email.includes('@'))email+='@almahal.com'; // short user names like "rasheed"
   $('lockGo').disabled=true;E.textContent='';
   signingIn=true;
   $('lockGo').textContent='جاري الدخول…';
