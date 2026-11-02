@@ -681,7 +681,7 @@ function render(){
   if(!$('sheet').hidden&&curAcc)drawAccount();
 }
 function pickedLabel(){
-  const i=item(saleSel);$('sPicked').textContent=i?`✓ ${i.name} · متوفر ${i.qty}`+(isWorker()?'':` · تكلفة الوحدة ${fmt(i.cost)}`):'';
+  const i=item(saleSel);$('sPicked').textContent=i?`✓ ${i.name} · الباقي ${i.qty} · عليك بـ ${fmt(i.cost)} للحبة`:'';
   const b=buySel==='__new'?null:item(buySel);$('pPicked').textContent=b?`✓ ${b.name} · عندك ${b.qty}`:(buySel==='__new'&&$('pQ').value.trim()?`✓ صنف جديد: ${$('pQ').value.trim()}`:'');
 }
 function saleHint(){
@@ -690,7 +690,7 @@ function saleHint(){
   h.classList.toggle('lossbox',loss);
   if(!(i&&q&&tot)){h.textContent='';return}
   const unit=tot/q,diff=tot-i.cost*q;
-  if(isWorker()){h.textContent=loss?'⚠️ السعر أقل من المسموح، راجع المالك قبل البيع':'';return}
+  if(isWorker()){h.textContent=loss?`⚠️ تبيع بأقل من سعر الحبة عليك (${fmt(i.cost)})، راجع المالك قبل البيع`:'';return}
   h.textContent=loss?`تنبيه: تبيع بخسارة ${fmt(-diff)}. سعر الحبة عليك ${fmt(i.cost)} وأنت بايعها بـ ${fmt(unit)}`:`الربح المتوقع: ${fmt(diff)} (سعر الحبة عليك ${fmt(i.cost)})`;
 }
 function buyHint(){const q=+$('pQty').value||0,tot=+$('pTotal').value||0;$('pHint').textContent=q&&tot?`سعر الوحدة: ${fmt(tot/q)}`:''}
@@ -1660,7 +1660,7 @@ function boot(){
     if(unsub){unsub();unsub=null}
     if(!u){ROLE='owner';document.body.classList.remove('worker');shop=null;S.items=[];S.months={};S.meta={};S.orders=[];synced={items:{},tx:new Map()};render();showLogin(false);return}
     shop=fdb.collection('shop');applyRole();
-    unsub=shop.onSnapshot(applySnap,e=>{console.error(e);toast(e&&e.code==='permission-denied'?'هذا الحساب ما عنده صلاحية على بيانات المحل':'انقطع الاتصال')});
+    unsub=shop.onSnapshot(applySnap,e=>{console.error(e);if(e&&e.code==='permission-denied'){ask({title:'الحساب ما عنده صلاحية',msg:'هذا الحساب ('+meEmail()+') ما هو مضاف في قواعد Firestore، فما يقدر يشوف الأصناف ولا يسجل.\nالمالك لازم يضيف الإيميل في Firestore ← القواعد (Rules) وينشرها.',ok:'تمام'})}else toast('انقطع الاتصال')});
     setTimeout(()=>touchSession(),1500);
     if(signingIn)return; // just signed in: unlocked() handles it
     showLogin(true); // returning user: ask for password to unlock
