@@ -77,6 +77,10 @@ nav button{position:relative}
 .oacts a,.oacts button{font:inherit;font-size:.85rem;text-decoration:none;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;min-height:38px;padding:0 12px;display:inline-flex;align-items:center;cursor:pointer}
 .oacts .done{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .list li.ord{display:block}
+.menu button[hidden]{display:none!important}
+body.worker nav .in{grid-template-columns:repeat(3,1fr)}
+body.worker nav button:not([data-t="sale"]):not([data-t="exp"]):not([data-t="ord"]),body.worker .daybar,body.worker #dayNote,body.worker .menu button:not([data-m="lock"]):not([data-m="logout"]),body.worker .bkdot,body.worker .x[data-del]{display:none!important}
+.wtag{display:none}body.worker .wtag{display:block;text-align:center;font-size:.8rem;color:var(--mute);margin:-4px 0 8px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--mute);margin-inline-end:6px;vertical-align:middle}.dot.on{background:#1f9d55}
 .vbtn{font:inherit;font-size:.85rem;border:1px solid var(--line);background:var(--bg);color:var(--red);border-radius:10px;min-height:38px;padding:0 12px;cursor:pointer;white-space:nowrap}
 .list li.ord .top{display:flex;justify-content:space-between;gap:8px}
@@ -196,6 +200,7 @@ body.locked{overflow:hidden}
       <button role="menuitem" data-m="logout">🚪 تسجيل خروج</button>
     </div></div></header>
 
+<div class="wtag">👷 حساب عامل: بيع وخرج وطلبيات</div>
 <div class="daybar"><label for="rdate">يوم العمل</label><input type="date" id="rdate" autocomplete="off"><button class="btn small" id="toToday" hidden>رجوع لليوم</button></div>
 <div class="daynote" id="dayNote" hidden></div>
 <main>
@@ -521,7 +526,20 @@ function saveOrder(o){if(shop)shop.doc('orders').set({map:{[o.id]:ordRec(o)}},{m
 function dropOrders(ids){if(!shop||!ids.length)return;const map={};ids.forEach(id=>map[id]=FV().delete());shop.doc('orders').set({map},{merge:true}).catch(saveErr)}
 function saveMonth(){syncAll()}
 const workDay=()=>$('rdate').value||dkey();
-function addTx(t){t.id=uidGen();t.at=Date.now();t.day=t.day||workDay();const m=t.day.slice(0,7);(S.months[m]=S.months[m]||[]).push(t);saveMonth(m)}
+// ---- roles: the owner sees everything; any other signed-in account is a worker (sale + expense only)
+const OWNER_EMAILS=['rrttrrtt258@gmail.com'];
+let ROLE='owner';
+const isWorker=()=>ROLE==='worker';
+const meEmail=()=>(auth&&auth.currentUser&&auth.currentUser.email||'').toLowerCase();
+function applyRole(){
+  ROLE=meEmail()&&!OWNER_EMAILS.includes(meEmail())?'worker':'owner';
+  const w=isWorker();document.body.classList.toggle('worker',w);
+  if(w){$('rdate').value=dkey();
+    const cur=document.querySelector('nav button[aria-current="page"]');
+    if(!cur||!['sale','exp','ord'].includes(cur.dataset.t))document.querySelector('nav button[data-t="sale"]').click()}
+  render();
+}
+function addTx(t){if(isWorker()){t.by=meEmail();t.day=dkey()}t.id=uidGen();t.at=Date.now();t.day=t.day||workDay();const m=t.day.slice(0,7);(S.months[m]=S.months[m]||[]).push(t);saveMonth(m)}
 function removeTx(t){const m=t.day.slice(0,7);S.months[m]=(S.months[m]||[]).filter(x=>x.id!==t.id);saveMonth(m)}
 function saveBlob(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5000)}
 
@@ -588,7 +606,10 @@ function reportFor(f){
   r.cash=r.cashSales+r.payIn+r.colCash-r.exp-r.payOut; // purchases are not taken from the drawer
   return r;
 }
+const byTag=t=>t.by?' · 👷 '+t.by.split('@')[0]:'';
 function describe(t){
+  const d=describe0(t);if(d&&t.by)d.s=(d.s||'')+byTag(t);return d}
+function describe0(t){
   if(t.type==='sale')return{t:`بيع ${t.qty} ${t.name}`,s:payLabel(t)+(t.person?' · '+t.person:'')+(t.total<t.cost?` · خسارة ${fmt(t.cost-t.total)}`:''),a:'+'+fmt(t.total),c:t.total<t.cost?'r':'g'};
   if(t.type==='buy')return{t:`شراء ${t.qty} ${t.name}`,s:(t.person?t.person+' · ':'')+(payOf(t)==='credit'?'آجل':PAY[payOf(t)]),a:'−'+fmt(t.total),c:'r'};
   if(t.type==='exp')return{t:t.note||'خرج',s:'خرج',a:'−'+fmt(t.amount),c:'a'};
@@ -597,6 +618,7 @@ function describe(t){
   if(t.type==='pay')return{t:`تسديد ${t.dir==='owed'?'من':'إلى'} ${t.person}`,s:'',a:(t.dir==='owed'?'+':'−')+fmt(t.amount),c:t.dir==='owed'?'g':'r'};
 }
 async function undo(t){
+  if(isWorker())return toast('الحذف للمالك بس');
   const d=describe(t);
   if(!await ask({title:'تحذف هذه العملية؟',msg:`${d.t} · ${d.a}`,ok:'احذف',danger:true}))return;
   if(t.type==='sale'){const i=item(t.itemId);if(i){i.qty+=t.qty;saveItems()}}
@@ -659,7 +681,7 @@ function render(){
   if(!$('sheet').hidden&&curAcc)drawAccount();
 }
 function pickedLabel(){
-  const i=item(saleSel);$('sPicked').textContent=i?`✓ ${i.name} · متوفر ${i.qty} · تكلفة الوحدة ${fmt(i.cost)}`:'';
+  const i=item(saleSel);$('sPicked').textContent=i?`✓ ${i.name} · متوفر ${i.qty}`+(isWorker()?'':` · تكلفة الوحدة ${fmt(i.cost)}`):'';
   const b=buySel==='__new'?null:item(buySel);$('pPicked').textContent=b?`✓ ${b.name} · عندك ${b.qty}`:(buySel==='__new'&&$('pQ').value.trim()?`✓ صنف جديد: ${$('pQ').value.trim()}`:'');
 }
 function saleHint(){
@@ -668,6 +690,7 @@ function saleHint(){
   h.classList.toggle('lossbox',loss);
   if(!(i&&q&&tot)){h.textContent='';return}
   const unit=tot/q,diff=tot-i.cost*q;
+  if(isWorker()){h.textContent=loss?'⚠️ السعر أقل من المسموح، راجع المالك قبل البيع':'';return}
   h.textContent=loss?`تنبيه: تبيع بخسارة ${fmt(-diff)}. سعر الحبة عليك ${fmt(i.cost)} وأنت بايعها بـ ${fmt(unit)}`:`الربح المتوقع: ${fmt(diff)} (سعر الحبة عليك ${fmt(i.cost)})`;
 }
 function buyHint(){const q=+$('pQty').value||0,tot=+$('pTotal').value||0;$('pHint').textContent=q&&tot?`سعر الوحدة: ${fmt(tot/q)}`:''}
@@ -1008,6 +1031,7 @@ document.addEventListener('click',e=>{
 });
 // ---- edit a debt entry ----
 async function editEntry(id){
+  if(isWorker())return;
   const t=allTx().find(x=>x.id===id);if(!t)return;
   if(t.split)return ask({title:'مبيعة مقسّمة',msg:'هذي مبيعة مقسّمة على طرق دفع، ما تتعدل من هنا. احذفها بزر × وسجّلها من جديد.',ok:'تمام'});
   if(t.type==='sale'||t.type==='buy'){
@@ -1355,7 +1379,7 @@ const pd=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d)};
 const addDays=(k,n)=>{const d=pd(k);d.setDate(d.getDate()+n);return dkey(d)};
 $('menuBtn').onclick=e=>{e.stopPropagation();const m=$('menu');m.hidden=!m.hidden;$('menuBtn').setAttribute('aria-expanded',!m.hidden)};
 document.addEventListener('click',e=>{if(!e.target.closest('.menuwrap')){$('menu').hidden=true;$('menuBtn').setAttribute('aria-expanded','false')}});
-$('menu').addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(!b)return;$('menu').hidden=true;
+$('menu').addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(!b)return;$('menu').hidden=true;if(isWorker()&&!['lock','logout'].includes(b.dataset.m))return;
   const m=b.dataset.m;if(m==='backup')openBackup();else if(m==='devices')openDevices();else if(m==='owner')ownerLogin();else if(m==='delete')openDel();else if(m==='lock')lockNow();else if(m==='logout')logout();else openRange(m,workDay())});
 // ---- weekly / monthly reports ----
 let rMode='week',rAnchor=dkey(),rText='',rCustom=null;
@@ -1494,7 +1518,7 @@ $('copyRep').onclick=async()=>{
   try{await navigator.clipboard.writeText(txt);toast('انسخ التقرير')}catch(e){ask({title:'انسخ التقرير',fields:[{label:'اضغط مطولاً وانسخ',value:txt,type:'textarea'}],ok:'تم'})}
 };
 document.querySelector('nav').addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b)return;
+  const b=e.target.closest('button');if(!b)return;if(isWorker()&&!['sale','exp','ord'].includes(b.dataset.t))return;
   document.querySelectorAll('nav button').forEach(x=>x.removeAttribute('aria-current'));b.setAttribute('aria-current','page');
   document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('on',s.id==='t-'+b.dataset.t));window.scrollTo(0,0);
   if(b.dataset.t==='buy'||b.dataset.t==='inv'){const slot=$(b.dataset.t==='buy'?'impSlotBuy':'impSlotInv');slot.after($('impBox'));$('impBox').style.margin=b.dataset.t==='buy'?'0 0 12px':'12px 0 0'}
@@ -1634,8 +1658,8 @@ function boot(){
   auth=firebase.auth();
   auth.onAuthStateChanged(u=>{
     if(unsub){unsub();unsub=null}
-    if(!u){shop=null;S.items=[];S.months={};S.meta={};S.orders=[];synced={items:{},tx:new Map()};render();showLogin(false);return}
-    shop=fdb.collection('shop');
+    if(!u){ROLE='owner';document.body.classList.remove('worker');shop=null;S.items=[];S.months={};S.meta={};S.orders=[];synced={items:{},tx:new Map()};render();showLogin(false);return}
+    shop=fdb.collection('shop');applyRole();
     unsub=shop.onSnapshot(applySnap,e=>{console.error(e);toast(e&&e.code==='permission-denied'?'هذا الحساب ما عنده صلاحية على بيانات المحل':'انقطع الاتصال')});
     setTimeout(()=>touchSession(),1500);
     if(signingIn)return; // just signed in: unlocked() handles it
