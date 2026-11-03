@@ -126,7 +126,8 @@ input.bad{border:2px solid var(--red);background:var(--rbg);color:var(--red)}
 .lrow:last-child{border-bottom:0}
 .lrow .d{font-family:"Readex Pro",sans-serif;font-size:.8rem;line-height:1.3}
 .lrow .m,.lrow .b{font-family:"Readex Pro",sans-serif;font-weight:500;white-space:nowrap}
-.lrow .b small{font-size:.75rem;margin-inline-start:3px}
+.lrow .b small,.lrow .m small{font-size:.72rem;margin-inline-start:3px}
+.lrow .m.r,.lrow .b.r{color:var(--red)}.lrow .m.g,.lrow .b.g{color:var(--green)}
 #pdfStage{position:fixed;left:-20000px;top:0}
 .pdfpage{width:794px;height:1123px;background:#fff;color:#000;padding:48px 44px;font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;direction:rtl;position:relative;box-sizing:border-box}
 .pdfpage h3{font-family:"Readex Pro","IBM Plex Sans Arabic",sans-serif;font-size:26px;margin:0 0 4px;text-align:center}
@@ -557,9 +558,10 @@ function ledgerAll(){
     if(!t.person)return;
     // every sale with a customer name shows in his account; the paid part is booked back as له so only the unpaid part stays on him
     if(t.type==='sale'){
-      L.push({t,side:'a',amt:t.total,note:`${t.qty} ${t.name}`});
-      const paid=t.split?t.total-(t.split.credit||0):(payOf(t)==='credit'?0:t.total);
-      if(paid>0.005)L.push({t,side:'l',amt:paid,note:'مدفوع '+(t.split?payLabel(Object.assign({},t,{split:Object.assign({},t.split,{credit:0})})):PAY[payOf(t)])});
+      const paid=t.split?t.total-(t.split.credit||0):(payOf(t)==='credit'?0:t.total),unpaid=t.total-paid;
+      const how=t.split?payLabel(Object.assign({},t,{split:Object.assign({},t.split,{credit:0})})):PAY[payOf(t)];
+      if(unpaid>0.005)L.push({t,side:'a',amt:unpaid,note:`${t.qty} ${t.name}`+(paid>0.005?` (بـ ${fmt(t.total)}، دفع ${how})`:'')});
+      else L.push({t,side:'n',amt:t.total,note:`${t.qty} ${t.name} · مدفوع ${how}`});
     }
     else if(t.type==='buy'&&payOf(t)==='credit')L.push({t,side:'l',amt:t.total,note:`${t.qty} ${t.name} (بضاعة منه)`});
     else if(t.type==='entry')L.push({t,side:t.side,amt:t.amount,note:[t.method?METH[t.method]:'',t.note||''].filter(Boolean).join(' · ')||''});
@@ -570,14 +572,14 @@ function ledgerAll(){
 }
 function debts(){ // {name:{owed,owe,bal}}  bal>0 عليه ، bal<0 له
   const P={};
-  ledgerAll().forEach(e=>{const n=e.t.person;const p=P[n]=P[n]||{bal:0,n:0,last:''};p.bal+=e.side==='a'?e.amt:-e.amt;p.n++;p.last=e.t.day});
+  ledgerAll().forEach(e=>{const n=e.t.person;const p=P[n]=P[n]||{bal:0,n:0,last:''};p.bal+=e.side==='a'?e.amt:e.side==='l'?-e.amt:0;p.n++;p.last=e.t.day});
   Object.values(P).forEach(p=>{p.owed=Math.max(0,p.bal);p.owe=Math.max(0,-p.bal)});
   return P;
 }
 function accountOf(name){
   const key=norm(name);const L=ledgerAll().filter(e=>norm(e.t.person)===key);
   let bal=0,ta=0,tl=0;
-  L.forEach(e=>{if(e.side==='a'){bal+=e.amt;ta+=e.amt}else{bal-=e.amt;tl+=e.amt}e.bal=bal});
+  L.forEach(e=>{if(e.side==='a'){bal+=e.amt;ta+=e.amt}else if(e.side==='l'){bal-=e.amt;tl+=e.amt}else{ta+=e.amt;tl+=e.amt}e.bal=bal});
   return{name:L.length?L[L.length-1].t.person:name,L,bal,ta,tl};
 }
 const ym=d=>d.slice(0,7);
@@ -588,7 +590,7 @@ function accView(name,from){
   if(!from||from==='all')return Object.assign({},A,{openHas:false,from:'all'});
   const start=from+'-01';
   const prev=A.L.filter(e=>e.t.day<start),L=A.L.filter(e=>e.t.day>=start);
-  let ta=0,tl=0;L.forEach(e=>{if(e.side==='a')ta+=e.amt;else tl+=e.amt});
+  let ta=0,tl=0;L.forEach(e=>{if(e.side==='a')ta+=e.amt;else if(e.side==='l')tl+=e.amt;else{ta+=e.amt;tl+=e.amt}});
   return Object.assign({},A,{L,ta,tl,from,openHas:prev.length>0,open:prev.length?prev[prev.length-1].bal:0});
 }
 let accFrom=null;const curMonth=()=>ym(dkey());
@@ -1086,7 +1088,7 @@ function srchText(e){const t=e.t;
   const m=(t.type==='entry'||t.type==='pay')&&t.method?METH[t.method]:'';
   const cash=(/نقد/.test(pay)||m==='كاش')?'كاش نقد':'';
   const kind={sale:'بيع بيع بالدين',buy:'شراء شراء آجل',pay:'تسديد',entry:'دين'}[t.type]||'';
-  return norm([t.note,t.name,t.item,t.person,pay,m,cash,kind,e.side==='a'?'عليه':'له',e.side==='a'?'':(m?'تسديد سداد':'')].join(' '));}
+  return norm([t.note,t.name,t.item,t.person,pay,m,cash,kind,e.side==='a'?'عليه':e.side==='l'?'له':'مدفوع',e.side!=='l'?'':(m?'تسديد سداد':'')].join(' '));}
 function openStatement(name){curAcc=known(name);$('aDate').value=workDay();$('aErr').textContent='';$('stSearch').value='';accFrom=curMonth();drawAccount();$('sheet').hidden=false;$('stWho').value=''}
 function drawAccount(){
   const full=accountOf(curAcc);
@@ -1104,15 +1106,15 @@ function drawAccount(){
   const L=q?A.L.filter(e=>srchText(e).includes(q)):A.L;
   $('stSearchX').hidden=!q;
   const sumBox=$('stSum');
-  if(q){let sa=0,sl=0;L.forEach(e=>{if(e.side==='a')sa+=e.amt;else sl+=e.amt});
+  if(q){let sa=0,sl=0;L.forEach(e=>{if(e.side==='a')sa+=e.amt;else if(e.side==='l')sl+=e.amt;else{sa+=e.amt;sl+=e.amt}});
     sumBox.hidden=false;sumBox.innerHTML=`نتائج "${esc($('stSearch').value.trim())}": <b>${L.length}</b> عملية`+(L.length?`<div>عليه: ${fmt(sa)} · له: ${fmt(sl)}</div><div class="big">الإجمالي: ${fmt(sa+sl)}</div>`:'')}
   else sumBox.hidden=true;
   const openRow=A.openHas?`<div class="lrow" style="background:var(--bg);font-weight:700"><span class="d">${dmy(A.from+'-01')}</span><span class="m"></span><span>رصيد سابق (مرحّل)</span><span class="b">${fmt(Math.abs(A.open))}<small class="${A.open>0.005?'r':'g'}">${A.open>0.005?'▼':A.open<-0.005?'▲':''}</small></span><span></span></div>`:'';
   $('ledger').innerHTML=`<div class="lrow h"><span>التاريخ</span><span>المبلغ</span><span>التفاصيل</span><span>الرصيد</span><span></span></div>`+
-    (L.length?L.slice().reverse().map(e=>`<div class="lrow" data-edit="${e.t.id}" style="cursor:pointer"><span class="d">${dmy(e.t.day)}</span><span class="m">${fmt(e.amt)}</span><span>${esc(e.note)}</span><span class="b">${fmt(Math.abs(e.bal))}<small class="${e.side==='a'?'r':'g'}">${e.side==='a'?'▼':'▲'}</small></span><button class="x" data-del="${e.t.id}" aria-label="حذف">×</button></div>`).join('')+openRow:openRow+(q?'<div class="empty">ما فيه نتائج لهذا البحث</div>':'<div class="empty">ما فيه عمليات لهذا الاسم بعد. سجّل أول مبلغ فوق</div>'))+(A.L.length?'<div class="hint" style="text-align:center;margin-top:8px">اضغط على أي عملية عشان تعدّلها</div>':'');
+    (L.length?L.slice().reverse().map(e=>`<div class="lrow" data-edit="${e.t.id}" style="cursor:pointer"><span class="d">${dmy(e.t.day)}</span><span class="m ${e.side==='a'?'r':e.side==='l'?'g':''}">${fmt(e.amt)}<small>${e.side==='a'?'▼':e.side==='l'?'▲':'✓'}</small></span><span>${esc(e.note)}</span><span class="b ${e.bal>0.005?'r':e.bal<-0.005?'g':''}">${Math.abs(e.bal)<0.005?'خالص':fmt(Math.abs(e.bal))}<small>${e.bal>0.005?' عليه':e.bal<-0.005?' له':''}</small></span><button class="x" data-del="${e.t.id}" aria-label="حذف">×</button></div>`).join('')+openRow:openRow+(q?'<div class="empty">ما فيه نتائج لهذا البحث</div>':'<div class="empty">ما فيه عمليات لهذا الاسم بعد. سجّل أول مبلغ فوق</div>'))+(A.L.length?'<div class="hint" style="text-align:center;margin-top:8px">اضغط على أي عملية عشان تعدّلها</div>':'');
 }
 function accText(A){
-  return `كشف حساب: ${A.name}\nبتاريخ ${dmy(dkey())}\n\n`+(A.openHas?`رصيد سابق حتى نهاية ${monthName(ym(addDays(A.from+'-01',-1)))}: ${balTxt(A.open)}\n`:'')+A.L.map(e=>`${dmy(e.t.day)} | ${e.note} | ${e.side==='a'?'عليه':'له'} ${fmt(e.amt)} | الرصيد ${fmt(Math.abs(e.bal))}`).join('\n')+
+  return `كشف حساب: ${A.name}\nبتاريخ ${dmy(dkey())}\n\n`+(A.openHas?`رصيد سابق حتى نهاية ${monthName(ym(addDays(A.from+'-01',-1)))}: ${balTxt(A.open)}\n`:'')+A.L.map(e=>`${dmy(e.t.day)} | ${e.note} | ${e.side==='a'?'عليه':e.side==='l'?'له':'مدفوع'} ${fmt(e.amt)} | الرصيد ${balTxt(e.bal)}`).join('\n')+
    `\n\nإجمالي عليه: ${fmt(A.ta)}\nإجمالي له: ${fmt(A.tl)}\nالإجمالي: ${balTxt(A.bal)}`;
 }
 $('stClose').onclick=$('stClose2').onclick=()=>{$('sheet').hidden=true;curAcc=null};
@@ -1150,7 +1152,7 @@ async function buildPdf(A){
     chunk.forEach(e=>{if(e.open){line('#f4f6f7');cell(0,dmy(A.from+'-01'),{num:true,size:26});cell(1,'رصيد سابق (مرحّل من '+monthName(ym(addDays(A.from+'-01',-1)))+')',{right:true,bold:true});
         cell(2,A.open>0.005?fmt(A.open):'',{num:true});cell(3,A.open<-0.005?fmt(-A.open):'',{num:true});cell(4,fmt(Math.abs(A.open)),{num:true,bold:true});y+=RH;return}
       line();cell(0,dmy(e.t.day),{num:true,size:26});cell(1,e.note,{right:true});
-      cell(2,e.side==='a'?fmt(e.amt):'',{num:true});cell(3,e.side==='l'?fmt(e.amt):'',{num:true});cell(4,fmt(Math.abs(e.bal)),{num:true,bold:true});y+=RH});
+      cell(2,e.side!=='l'?fmt(e.amt):'',{num:true});cell(3,e.side!=='a'?fmt(e.amt):'',{num:true});cell(4,fmt(Math.abs(e.bal)),{num:true,bold:true});y+=RH});
     if(p===pages-1){
       line('#f4f6f7');cell(1,'إجمالي العمليات',{bold:true});cell(2,fmt(A.ta),{num:true,bold:true});cell(3,fmt(A.tl),{num:true,bold:true});y+=RH+40;
       c.strokeStyle='#000';c.lineWidth=4;c.strokeRect(M,y,W-2*M,RH+30);
