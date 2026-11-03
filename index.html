@@ -179,7 +179,7 @@ body.locked{overflow:hidden}
     <div class="lockicon" aria-hidden="true">🔒</div>
     <h1 id="lockT">الحاسبة</h1>
     <div id="lockEmailWrap"><label for="lockEmail">اسم المستخدم أو الإيميل</label>
-    <input id="lockEmail" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" dir="ltr"></div>
+    <input id="lockEmail" name="hz-user" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" dir="ltr"></div>
     <label for="lockPw">كلمة المرور</label>
     <input id="lockPw" type="password" autocomplete="current-password" dir="ltr">
     <button class="btn" id="lockGo">دخول</button>
@@ -688,7 +688,8 @@ function saleHint(){
   const i=item(saleSel),q=+$('sQty').value||0,tot=+$('sTotal').value||0,h=$('sHint'),inp=$('sTotal');
   const loss=!!(i&&q&&tot&&tot<i.cost*q);
   h.classList.toggle('lossbox',loss);
-  if(!(i&&q&&tot)){h.textContent='';return}
+  if(!i){const n=$('sQ').value.trim();h.textContent=n&&!matchItems(n).length?'ℹ️ هذا مو في المخزون، بينسجل البيع بدون ما ينقص من المخزون (مثل التركيب والخدمات)':'';return}
+  if(!(q&&tot)){h.textContent='';return}
   const unit=tot/q,diff=tot-i.cost*q;
   if(isWorker()){h.textContent=loss?`⚠️ تبيع بأقل من سعر الحبة عليك (${fmt(i.cost)})، راجع المالك قبل البيع`:'';return}
   h.textContent=loss?`تنبيه: تبيع بخسارة ${fmt(-diff)}. سعر الحبة عليك ${fmt(i.cost)} وأنت بايعها بـ ${fmt(unit)}`:`الربح المتوقع: ${fmt(diff)} (سعر الحبة عليك ${fmt(i.cost)})`;
@@ -882,7 +883,7 @@ function peopleSrc(q){
   return names.filter(n=>{const x=norm(n);return w.every(v=>x.includes(v))}).map(n=>{const p=P[n]||{owed:0,owe:0};const net=p.owed-p.owe;
     return{id:n,name:n,s:net>0.001?'عليه '+fmt(net):net<-0.001?'له '+fmt(-net):'',c:net>0.001?'r':net<-0.001?'g':''}}).slice(0,30);
 }
-combo($('sQ'),$('sOpts'),itemSrc,null,id=>{saleSel=id;pickedLabel();saleHint()});
+combo($('sQ'),$('sOpts'),itemSrc,q=>`+ بيع بدون مخزون: ${q}`,id=>{saleSel=id==='__new'?null:id;pickedLabel();saleHint()});
 combo($('pQ'),$('pOpts'),itemSrc,q=>`+ صنف جديد: ${q}`,id=>{buySel=id;pickedLabel()});
 combo($('sWho'),$('sWhoOpts'),peopleSrc,q=>`+ عميل جديد: ${q}`,()=>{});
 combo($('pSup'),$('pSupOpts'),peopleSrc,q=>`+ مورد جديد: ${q}`,()=>{});
@@ -943,7 +944,14 @@ function resetLine(){$('sQty').value=1;$('sTotal').value='';$('sQ').value='';sal
 // current form line -> line object, or null (after showing the error)
 function lineFromForm(E){
   const i=item(saleSel),qty=+$('sQty').value,total=+$('sTotal').value;
-  if(!i)return E($('sQ').value.trim()?'فيه أكثر من صنف بهذا الاسم أو ما هو موجود، اختر من القائمة':'اكتب اسم الصنف واختره من القائمة'),null;
+  if(!i){ // not in stock: allowed (installation, service, item not entered yet) — sold without touching inventory
+    const name=$('sQ').value.trim();
+    if(!name)return E('اكتب اسم الصنف'),null;
+    if(matchItems(name).length>1)return E(`فيه أكثر من صنف يطابق "${name}"، اختر واحد من القائمة`),null;
+    if(!(qty>0))return E('اكتب الكمية'),null;
+    if(!(total>=0)||$('sTotal').value==='')return E('اكتب المبلغ'),null;
+    return{itemId:null,name,qty,total,cost:0,free:true};
+  }
   if(!(qty>0))return E('اكتب الكمية'),null;
   const inCart=cart.filter(l=>l.itemId===i.id).reduce((a,l)=>a+l.qty,0);
   if(qty+inCart>i.qty)return E(`المتوفر من ${i.name} ${i.qty} بس`),null;
@@ -1531,7 +1539,7 @@ const LH='almahal-lock';
 function showLogin(signedIn){
   $('lock').hidden=false;document.body.classList.add('locked');
   $('lockEmailWrap').hidden=!!signedIn;$('lockSwitch').hidden=!signedIn;
-  $('lockPw').value='';$('lockErr').textContent='';
+  $('lockPw').value='';$('lockErr').textContent='';$('lockEmail').value='';setTimeout(()=>{if(document.activeElement!==$('lockEmail'))$('lockEmail').value=''},600); // don't leave a saved user name showing
   setTimeout(()=>(signedIn?$('lockPw'):$('lockEmail')).focus(),80);
 }
 function lockNow(){showLogin(!!(auth&&auth.currentUser))}
