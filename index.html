@@ -972,7 +972,7 @@ $('addSale').onclick=()=>{
   const E=m=>{$('sErr').textContent=m;if(m)toast(m)};
   if($('sTotal').value!==''||$('sQ').value.trim()){const l=lineFromForm(E);if(!l)return;cart.push(l);resetLine()}
   if(!cart.length)return E('اكتب الصنف والكمية والمبلغ');
-  const pay=segVal('sPay'),person=$('sWho').value.trim(),credit=pay==='credit',total=cartTotal();
+  const pay=segVal('sPay'),person=$('sWho').value.trim()?known($('sWho').value.trim()):'',credit=pay==='credit',total=cartTotal();
   if(credit&&!person)return E('اكتب اسم الزبون');
   let split=null;
   if(pay==='split'){
