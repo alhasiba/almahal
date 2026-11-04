@@ -260,7 +260,7 @@ body.locked{overflow:hidden}
       <div class="row"><div><label for="sSC">💵 كاش</label><input id="sSC" type="number" inputmode="decimal" min="0"></div><div><label for="sSK">💳 شبكة</label><input id="sSK" type="number" inputmode="decimal" min="0"></div></div>
       <div class="row"><div><label for="sST">🟣 تمارا</label><input id="sST" type="number" inputmode="decimal" min="0"></div><div><label for="sSD">🧾 دين (على الزبون)</label><input id="sSD" type="number" inputmode="decimal" min="0"></div></div>
       <div class="hint" id="sSLeft" style="margin-top:6px"></div></div>
-    <label for="sWho" id="sWhoLbl">اسم الزبون (اختياري، إذا كتبته تنضاف البيعة في حسابه)</label><div class="combo"><input id="sWho" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="sWhoOpts" placeholder="مثلاً: أحمد"><ul class="opts" id="sWhoOpts" role="listbox" hidden></ul></div>
+    <label for="sWho" id="sWhoLbl">اسم الزبون (دين ← عليه · نقد/شبكة/تمارا ← له)</label><div class="combo"><input id="sWho" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="sWhoOpts" placeholder="مثلاً: أحمد"><ul class="opts" id="sWhoOpts" role="listbox" hidden></ul></div>
     <div class="hint" id="sHint"></div>
     <button class="btn" id="addSale">سجّل البيع</button>
     <div class="err" id="sErr"></div>
@@ -560,8 +560,9 @@ function ledgerAll(){
     if(t.type==='sale'){
       const paid=t.split?t.total-(t.split.credit||0):(payOf(t)==='credit'?0:t.total),unpaid=t.total-paid;
       const how=t.split?payLabel(Object.assign({},t,{split:Object.assign({},t.split,{credit:0})})):PAY[payOf(t)];
-      if(unpaid>0.005)L.push({t,side:'a',amt:unpaid,note:`${t.qty} ${t.name}`+(paid>0.005?` (بـ ${fmt(t.total)}، دفع ${how})`:'')});
-      else L.push({t,side:'n',amt:t.total,note:`${t.qty} ${t.name} · مدفوع ${how}`});
+      // owner's rule: the debt part goes on him (عليه); what was paid by cash/card/tamara goes to him (له)
+      if(unpaid>0.005)L.push({t,side:'a',amt:unpaid,note:`${t.qty} ${t.name}`+(paid>0.005?` · دين`:'')});
+      if(paid>0.005)L.push({t,side:'l',amt:paid,note:`${t.qty} ${t.name} · ${how}`});
     }
     else if(t.type==='buy'&&payOf(t)==='credit')L.push({t,side:'l',amt:t.total,note:`${t.qty} ${t.name} (بضاعة منه)`});
     else if(t.type==='entry')L.push({t,side:t.side,amt:t.amount,note:[t.method?METH[t.method]:'',t.note||''].filter(Boolean).join(' · ')||''});
@@ -850,7 +851,7 @@ $('t-ord').addEventListener('click',async e=>{
   else if(b.dataset.odel){if(!await ask({title:'تحذف الطلبية؟',msg:`${o.item} · ${o.name}`,ok:'احذف',danger:true}))return;S.orders=S.orders.filter(x=>x.id!==id);dropOrders([id]);render();toast('انحذفت الطلبية')}
 });
 function waitingFor(name){const n=norm(name);return S.orders.filter(o=>!o.done&&o.kind==='c'&&(norm(o.item)===n||norm(o.item).includes(n)||n.includes(norm(o.item))))}
-$('sPay').addEventListener('change',()=>{const v=segVal('sPay');$('sWhoLbl').textContent=v==='credit'?'اسم الزبون (ضروري للدين)':v==='split'?'اسم الزبون (ضروري إذا فيه جزء دين)':'اسم الزبون (اختياري، إذا كتبته تنضاف البيعة في حسابه)';$('sSplit').hidden=v!=='split';splitHint()});
+$('sPay').addEventListener('change',()=>{const v=segVal('sPay');$('sWhoLbl').textContent=v==='credit'?'اسم الزبون (ضروري للدين)':v==='split'?'اسم الزبون (ضروري إذا فيه جزء دين)':'اسم الزبون (دين ← عليه · نقد/شبكة/تمارا ← له)';$('sSplit').hidden=v!=='split';splitHint()});
 function saleTotalNow(){return cart.reduce((a,l)=>a+l.total,0)+($('sTotal').value!==''?(+$('sTotal').value||0):0)}
 function splitHint(){const t=saleTotalNow();const sum=['sSC','sSK','sST','sSD'].reduce((a,id)=>a+(numA($(id).value)||0),0);const rest=t-sum;
   $('sSLeft').textContent=!t?'اكتب الإجمالي فوق':Math.abs(rest)<0.005?'✓ المقسّم يساوي الإجمالي':rest>0?`باقي ${fmt(rest)} ما توزّع`:`زايد ${fmt(-rest)}`}
