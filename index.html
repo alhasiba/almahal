@@ -67,6 +67,8 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .daybar{max-width:640px;margin:0 auto;padding:0 18px 6px;display:flex;gap:10px;align-items:center}
 .daybar label{margin:0;white-space:nowrap}
 .daybar input{max-width:180px;min-height:40px;padding:6px 10px}
+.daybar{flex-wrap:wrap}.daybar .dhint{flex-basis:100%;margin-top:-2px}
+.dhint{font-size:.78rem;color:var(--mute);margin-top:4px;line-height:1.4}
 .daynote{max-width:612px;margin:0 auto 8px;padding:10px 14px;border-radius:10px;background:var(--chip);font-size:.9rem}
 
 nav{position:fixed;bottom:0;left:0;right:0;background:var(--paper);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
@@ -638,7 +640,17 @@ function opsHTML(list,withDel=true){
   if(!list.length)return '<li class="empty">ما فيه شي مسجل</li>';
   return list.slice().reverse().map(t=>{const d=describe(t);return `<li><div><div class="t">${esc(d.t)}</div><div class="s">${esc(d.s)}</div></div><div style="display:flex;align-items:center"><span class="amt ${d.c}">${d.a}</span>${withDel?`<button class="x" data-del="${t.id}" aria-label="حذف">×</button>`:''}</div></li>`}).join('');
 }
-function render(){
+// under every date box: day name, month name + number, and the Hijri date
+const HIJ=(()=>{try{return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',{day:'numeric',month:'long',year:'numeric'})}catch(e){return null}})();
+function dateInfo(v){if(!/^\d{4}-\d{2}-\d{2}$/.test(v||''))return '';const d=new Date(v+'T12:00');const m=+v.slice(5,7);
+  const months=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  let h='';try{h=HIJ?HIJ.format(d):''}catch(e){}
+  return `${d.toLocaleDateString('ar',{weekday:'long'})} ${+v.slice(8)} ${months[m-1]} (شهر ${m})`+(h?` · ${h}`:'');}
+function dateHints(){document.querySelectorAll('input[type="date"]').forEach(inp=>{
+  let h=inp.nextElementSibling;if(!h||!h.classList.contains('dhint')){h=document.createElement('div');h.className='dhint';inp.after(h);
+    inp.addEventListener('input',()=>h.textContent=dateInfo(inp.value));inp.addEventListener('change',()=>h.textContent=dateInfo(inp.value))}
+  h.textContent=dateInfo(inp.value)})}
+function render(){setTimeout(dateHints,0);
   const today=dkey();
   $('today').textContent=new Date().toLocaleDateString('ar',{weekday:'long',day:'numeric',month:'long'});
   // report
@@ -1090,7 +1102,7 @@ function srchText(e){const t=e.t;
   const cash=(/نقد/.test(pay)||m==='كاش')?'كاش نقد':'';
   const kind={sale:'بيع بيع بالدين',buy:'شراء شراء آجل',pay:'تسديد',entry:'دين'}[t.type]||'';
   return norm([t.note,t.name,t.item,t.person,pay,m,cash,kind,e.side==='a'?'عليه':e.side==='l'?'له':'مدفوع',e.side!=='l'?'':(m?'تسديد سداد':'')].join(' '));}
-function openStatement(name){curAcc=known(name);$('aDate').value=workDay();$('aErr').textContent='';$('stSearch').value='';accFrom=curMonth();drawAccount();$('sheet').hidden=false;$('stWho').value=''}
+function openStatement(name){curAcc=known(name);$('aDate').value=workDay();$('aErr').textContent='';$('stSearch').value='';accFrom=curMonth();drawAccount();dateHints();$('sheet').hidden=false;$('stWho').value=''}
 function drawAccount(){
   const full=accountOf(curAcc);
   // month options: every month from the first entry up to now
@@ -1414,6 +1426,7 @@ function drawRange(){
   const rangeTxt=rMode!=='month'?`من ${dmy(from)} إلى ${dmy(to)}`:`${MONTHS[m-1]} ${y}`;
   $('rTitle').textContent=title;$('rRange').textContent=rangeTxt;
   if(rMode!=='custom'){$('rFrom').value=from;$('rTo').value=to}
+  dateHints();
   $('rPrev').disabled=rMode==='custom';
   $('rNext').disabled=rMode==='custom'||to>=dkey();$('rNext').style.opacity=($('rNext').disabled)?.35:1;
   $('rBody').innerHTML=`<div class="head"><div class="big">${rangeTxt}</div><div class="date">${r.T.length} عملية</div></div>
