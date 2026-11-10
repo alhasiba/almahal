@@ -368,7 +368,7 @@ body.locked{overflow:hidden}
 </section>
 <datalist id="people"></datalist>
 <div class="sheet" id="sheet" hidden><div class="panel" role="dialog" aria-modal="true" aria-labelledby="accName">
-  <div class="acchead"><div><h2 id="accName" style="margin:0"></h2><div id="accBal" class="amt"></div></div><button class="x" id="stClose" aria-label="إغلاق" style="font-size:1.6rem">×</button></div>
+  <div class="acchead"><div><div style="display:flex;align-items:center;gap:8px"><h2 id="accName" style="margin:0"></h2><button class="btn small" id="stRename" style="min-height:34px;padding:0 10px;font-size:.85rem">✏️ تعديل الاسم</button></div><div id="accBal" class="amt"></div></div><button class="x" id="stClose" aria-label="إغلاق" style="font-size:1.6rem">×</button></div>
   <div class="box">
     <div class="row">
       <div><label for="aAmt">المبلغ</label><input id="aAmt" type="number" inputmode="decimal" min="0"></div>
@@ -1132,6 +1132,20 @@ function accText(A){
 }
 $('stClose').onclick=$('stClose2').onclick=()=>{$('sheet').hidden=true;curAcc=null};
 $('stSearch').addEventListener('input',()=>drawAccount());
+// rename an account: every operation under the old name moves to the new one (or merges into an existing account)
+$('stRename').onclick=async()=>{
+  const old=accountOf(curAcc).name;
+  const r=await ask({title:'تعديل اسم الحساب',msg:'كل عمليات هذا الحساب بتنتقل للاسم الجديد. لو كتبت اسم حساب موجود، ينضمون مع بعض.',fields:[{label:'الاسم الجديد',value:old}],ok:'احفظ'});
+  if(!r)return;const nn=r[0].trim().replace(/\s+/g,' ');
+  if(!nn||nn===old)return;
+  const target=Object.keys(debts()).find(x=>norm(x)===norm(nn)&&norm(x)!==norm(old));
+  if(target&&!await ask({title:'تدمج الحسابين؟',msg:`فيه حساب موجود باسم "${target}". بتنضم عمليات "${old}" عليه ويصيرون حساب واحد.`,ok:'ادمج'}))return;
+  const finalName=target||nn,key=norm(old);let n=0;
+  allTx().filter(t=>t.person&&norm(t.person)===key).forEach(t=>{
+    removeTx(t);const c=Object.assign({},t,{person:finalName,id:uidGen()});
+    const m=c.day.slice(0,7);(S.months[m]=S.months[m]||[]).push(c);n++});
+  saveMonth();curAcc=finalName;render();drawAccount();toast(`تغيّر الاسم (${n} عملية)`);
+};
 $('stMonth').addEventListener('change',()=>{accFrom=$('stMonth').value;drawAccount()});
 $('stSearchX').onclick=()=>{$('stSearch').value='';drawAccount();$('stSearch').focus()};
 $('sheet').addEventListener('click',e=>{if(e.target.id==='sheet'){$('sheet').hidden=true;curAcc=null}});
