@@ -602,16 +602,16 @@ const dmy=d=>d.split('-').reverse().join('-');
 function dayReport(day){return reportFor(t=>t.day===day)}
 function reportFor(f){
   const T=allTx().filter(f);
-  const r={sales:0,cashSales:0,cardSales:0,tamaraSales:0,colTam:0,creditSales:0,profit:0,units:0,buys:0,cashBuys:0,exp:0,payIn:0,payOut:0,colCash:0,colCard:0,colTr:0,T};
+  const r={sales:0,cashSales:0,cardSales:0,tamaraSales:0,colTam:0,creditSales:0,profit:0,units:0,buys:0,cashBuys:0,exp:0,payIn:0,payOut:0,colCash:0,colCard:0,colTr:0,colCn:0,colSm:0,T};
   T.forEach(t=>{
     if(t.type==='sale'){r.sales+=t.total;r.units+=t.qty;r.profit+=t.total-t.cost;if(t.split){const z=t.split;r.cashSales+=z.cash||0;r.cardSales+=z.card||0;r.tamaraSales+=z.tamara||0;r.creditSales+=z.credit||0}else{const p=payOf(t);if(p==='credit')r.creditSales+=t.total;else if(p==='card')r.cardSales+=t.total;else if(p==='tamara')r.tamaraSales+=t.total;else r.cashSales+=t.total}}
     if(t.type==='buy'){r.buys+=t.total;if(payOf(t)==='cash')r.cashBuys+=t.total}
     if(t.type==='exp')r.exp+=t.amount;
     if(t.type==='pay'){t.dir==='owed'?r.payIn+=t.amount:r.payOut+=t.amount}
-    if(t.type==='entry'&&t.side==='l'&&t.method){if(t.method==='cash')r.colCash+=t.amount;else if(t.method==='card')r.colCard+=t.amount;else if(t.method==='tamara')r.colTam+=t.amount;else r.colTr+=t.amount}
+    if(t.type==='entry'&&t.side==='l'&&t.method){if(t.method==='cash')r.colCash+=t.amount;else if(t.method==='card')r.colCard+=t.amount;else if(t.method==='tamara')r.colTam+=t.amount;else if(t.method==='china')r.colCn+=t.amount;else if(t.method==='samaha')r.colSm+=t.amount;else r.colTr+=t.amount}
   });
   r.net=r.profit;r.costs=r.sales-r.profit;
-  r.col=r.colCash+r.colCard+r.colTr+r.colTam;
+  r.col=r.colCash+r.colCard+r.colTr+r.colTam+r.colCn+r.colSm;
   r.cash=r.cashSales+r.payIn+r.colCash-r.exp-r.payOut; // purchases are not taken from the drawer
   return r;
 }
@@ -668,7 +668,7 @@ function render(){setTimeout(dateHints,0);
    <div class="rline"><span>تكلفة البضاعة المباعة</span><span>${fmt(r.costs)}</span></div>
    <div class="rline"><span>الخرج</span><span class="a">${fmt(r.exp)}</span></div>
    ${r.payIn?`<div class="rline"><span>تسديدات وصلتني</span><span>${fmt(r.payIn)}</span></div>`:''}
-   ${r.col?`<div class="rline"><span>تحصيل ديون</span><span class="g">${fmt(r.col)}</span></div>${r.colCash?`<div class="rline"><span>· كاش</span><span>${fmt(r.colCash)}</span></div>`:''}${r.colCard?`<div class="rline"><span>· شبكة</span><span>${fmt(r.colCard)}</span></div>`:''}${r.colTr?`<div class="rline"><span>· حوالة RM</span><span>${fmt(r.colTr)}</span></div>`:''}${r.colTam?`<div class="rline"><span>· تمارا</span><span>${fmt(r.colTam)}</span></div>`:''}`:''}
+   ${r.col?`<div class="rline"><span>تحصيل ديون</span><span class="g">${fmt(r.col)}</span></div>${r.colCash?`<div class="rline"><span>· كاش</span><span>${fmt(r.colCash)}</span></div>`:''}${r.colCard?`<div class="rline"><span>· شبكة</span><span>${fmt(r.colCard)}</span></div>`:''}${r.colTr?`<div class="rline"><span>· حوالة RM</span><span>${fmt(r.colTr)}</span></div>`:''}${r.colCn?`<div class="rline"><span>· حوالة لحساب الصيني</span><span>${fmt(r.colCn)}</span></div>`:''}${r.colSm?`<div class="rline"><span>· حوالة عين السماحة</span><span>${fmt(r.colSm)}</span></div>`:''}${r.colTam?`<div class="rline"><span>· تمارا</span><span>${fmt(r.colTam)}</span></div>`:''}`:''}
    <div class="rsep"></div>
    <div class="total"><span>صافي الربح<br><small class="date">البيع ناقص تكلفة المنتج</small></span><span class="big ${r.net<0?'r':'g'}">${fmt(r.net)}</span></div>
    <div class="rline"><span>صافي الكاش في الدرج</span><span>${fmt(r.cash)}</span></div>`;
@@ -1028,9 +1028,9 @@ $('addExp').onclick=()=>{
   if(!(amount>0))return $('eErr').textContent='اكتب المبلغ';
   addTx({type:'exp',note,amount});$('eErr').textContent='';$('eNote').value=$('eAmt').value='';render();toast('انسجل الخرج');
 };
-const METH={cash:'كاش',card:'شبكة',transfer:'حوالة RM',tamara:'تمارا'};
+const METH={cash:'كاش',card:'شبكة',transfer:'حوالة RM',china:'حوالة لحساب الصيني',samaha:'حوالة عين السماحة',tamara:'تمارا'};
 async function askMethod(person,amount){
-  const r=await ask({title:`كيف دفع ${person}؟`,msg:`المبلغ ${fmt(amount)}`,fields:[{label:'طريقة الدفع',type:'select',value:'cash',options:[['cash','💵 كاش'],['card','💳 شبكة'],['transfer','🏦 حوالة RM (رد ماستر)'],['tamara','🟣 تمارا'],['','مو دفع (مبلغ له بس)']]}],ok:'سجّل'});
+  const r=await ask({title:`كيف دفع ${person}؟`,msg:`المبلغ ${fmt(amount)}`,fields:[{label:'طريقة الدفع',type:'select',value:'cash',options:[['cash','💵 كاش'],['card','💳 شبكة'],['transfer','🏦 حوالة RM (رد ماستر)'],['china','🇨🇳 حوالة لحساب الصيني'],['samaha','🏢 حوالة عين السماحة'],['tamara','🟣 تمارا'],['','مو دفع (مبلغ له بس)']]}],ok:'سجّل'});
   return r?r[0]:null}
 function addEntry(person,amount,note,day,side,errEl,method){
   if(!person){errEl.textContent='اكتب الاسم';return false}
@@ -1082,7 +1082,7 @@ async function editEntry(id){
     {label:'عليه ولا له',type:'select',value:side,options:[['a','عليه ▼'],['l','له ▲']]},
     {label:'التاريخ',type:'date',value:t.day},
     {label:'التفاصيل',value:note},
-    {label:'طريقة الدفع (إذا له)',type:'select',value:t.method||'',options:[['','بدون'],['cash','💵 كاش'],['card','💳 شبكة'],['transfer','🏦 حوالة RM (رد ماستر)'],['tamara','🟣 تمارا']]}],ok:'احفظ التعديل'});
+    {label:'طريقة الدفع (إذا له)',type:'select',value:t.method||'',options:[['','بدون'],['cash','💵 كاش'],['card','💳 شبكة'],['transfer','🏦 حوالة RM (رد ماستر)'],['china','🇨🇳 حوالة لحساب الصيني'],['samaha','🏢 حوالة عين السماحة'],['tamara','🟣 تمارا']]}],ok:'احفظ التعديل'});
   if(!r)return;
   const person=known(r[0].trim()),amount=numA(r[1]),ns=r[2],day=/^\d{4}-\d{2}-\d{2}$/.test(r[3])?r[3]:t.day,nnote=r[4].trim();
   if(!person)return ask({title:'الاسم فاضي',ok:'تمام'});
@@ -1266,7 +1266,7 @@ function receiptLines(r){
   if(r.payIn)add('تسديدات وصلتني',r.payIn);
   if(r.col){add('تحصيل ديون',r.col);
     if(r.colCash)add('· كاش',r.colCash,{sub:1});if(r.colCard)add('· شبكة',r.colCard,{sub:1});
-    if(r.colTr)add('· حوالة RM',r.colTr,{sub:1});if(r.colTam)add('· تمارا',r.colTam,{sub:1})}
+    if(r.colTr)add('· حوالة RM',r.colTr,{sub:1});if(r.colCn)add('· حوالة لحساب الصيني',r.colCn,{sub:1});if(r.colSm)add('· حوالة عين السماحة',r.colSm,{sub:1});if(r.colTam)add('· تمارا',r.colTam,{sub:1})}
   add('صافي الربح',r.net,{total:1,neg:r.net<0});
   add('صافي الكاش في الدرج',r.cash);
   return L;
